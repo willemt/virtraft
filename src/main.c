@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "raft.h"
 #include "linked_list_queue.h"
@@ -40,9 +41,7 @@ typedef struct peer_connection_s peer_connection_t;
 
 struct peer_connection_s
 {
-    /* peer's raft node_idx */
     raft_node_t* node;
-
     peer_connection_t* next;
 };
 
@@ -64,13 +63,14 @@ typedef struct
     node_t* nodes;
     int n_nodes;
     int n_entries;
+    node_t* leader;
 } system_t;
 
 system_t sys;
 
 options_t opts;
 
-void __int_handler(int dummy)
+static void __int_handler(int dummy)
 {
     int i;
 
@@ -105,49 +105,41 @@ static int __raft_applylog(
 
     int i;
 
-    raft_server_t* highest_leader = NULL;
-    int highest_term = 0;
+    int last_applied_idx = raft_get_last_applied_idx(raft);
+    raft_entry_t* ety = raft_get_entry_from_idx(raft, last_applied_idx);
+
+    assert(last_applied_idx <= raft_get_current_idx(raft));
 
     for (i = 0; i < sys.n_nodes; i++)
     {
-        raft_server_t* leader = sys.nodes[i].raft;
+        raft_server_t* other = sys.nodes[i].raft;
 
-        if (!raft_is_leader(leader))
+        if (other == raft)
             continue;
 
-        if (highest_term < raft_get_current_term(leader))
+        raft_entry_t* other_ety = raft_get_entry_from_idx(other, last_applied_idx);
+        if (other_ety && last_applied_idx <= raft_get_commit_idx(other))
         {
-            highest_leader = leader;
-            highest_term = raft_get_current_term(leader);
-        }
-    }
-
-    if (highest_leader && highest_leader != raft)
-    {
-        int last_applied_idx = raft_get_last_applied_idx(raft);
-
-        raft_entry_t* ety = raft_get_entry_from_idx(raft, last_applied_idx);
-        raft_entry_t* leader_ety = raft_get_entry_from_idx(highest_leader, last_applied_idx);
-
-        /* assert(ety->id != leader_ety->id); */
-        if (!leader_ety || ety->term != leader_ety->term || ety->id != leader_ety->id)
-        {
-            printf("node applied bad ety %d (ie. %d vs %d) %lx %lx id: %dvs%d\n",
-                   last_applied_idx,
-                   ety->term,
-                   leader_ety ? leader_ety->term : -999,
-                   (unsigned long)raft,
-                   (unsigned long)highest_leader,
-                   ety->id,
-                   leader_ety ? leader_ety->id : -999);
-            __int_handler(0);
-            abort();
+            if (ety->term != other_ety->term || ety->id != other_ety->id)
+            {
+                printf("node applied bad ety idx:%d (ie. t: %d vs %d) %lx %lx id: %d vs %d\n",
+                       last_applied_idx,
+                       ety->term,
+                       other_ety ? other_ety->term : -999,
+                       (unsigned long)raft,
+                       (unsigned long)other,
+                       ety->id,
+                       other_ety ? other_ety->id : -999);
+                __int_handler(0);
+                abort();
+            }
         }
     }
 
     return 0;
 }
 
+// TODO
 /** Raft callback for saving term field to disk.
  * This only returns when change has been made to disk. */
 static int __raft_persist_term(
@@ -159,6 +151,7 @@ static int __raft_persist_term(
     return 0;
 }
 
+// TODO
 /** Raft callback for saving voted_for field to disk.
  * This only returns when change has been made to disk. */
 static int __raft_persist_vote(
@@ -175,12 +168,16 @@ void __raft_log(raft_server_t* raft, raft_node_t* node, void *udata,
                 const char *buf)
 {
     system_t* sys = udata;
-    printf("raft: %lx, %lx '%s'\n",
-           (unsigned long)raft,
-           node ?  (unsigned long)sys->nodes[raft_node_get_id(node)].raft : 0,
-           buf);
+    if (node)
+        printf("> %lx, %lx %s\n",
+               (unsigned long)raft,
+               (unsigned long)sys->nodes[raft_node_get_id(node)].raft,
+               buf);
+    else
+        printf("> %lx               %s\n", (unsigned long)raft, buf);
 }
 
+// TODO
 /** Raft callback for appending an item to the log */
 static int __raft_logentry_offer(
     raft_server_t* raft,
@@ -192,6 +189,7 @@ static int __raft_logentry_offer(
     return 0;
 }
 
+// TODO
 /** Raft callback for removing the first entry from the log
  * @note this is provided to support log compaction in the future */
 static int __raft_logentry_poll(
@@ -204,6 +202,7 @@ static int __raft_logentry_poll(
     return 0;
 }
 
+// TODO
 /** Raft callback for deleting the most recent entry from the log.
  * This happens when an invalid leader finds a valid leader and has to delete
  * superseded log entries. */
@@ -357,7 +356,7 @@ static void __server_poll_messages(node_t* me, system_t* sys)
     }
 }
 
-/* Election Safety
+/** Election Safety
  * At most one leader can be elected in a given term. */
 static void __ensure_election_safety(system_t* sys)
 {
@@ -387,6 +386,7 @@ static void __ensure_election_safety(system_t* sys)
     }
 }
 
+// TODO:
 /* Log Matching
  * If two logs contain an entry with the same index and term, then the
  * logs are identical in all entries up through the given index. */
@@ -418,7 +418,64 @@ static void __push_entry(system_t* sys)
             ety->data.len = 16;
             strrnd(ety->data.buf, 16);
             msg_entry_response_t response;
-            raft_recv_entry(r, NULL, ety, &response);
+            raft_recv_entry(r, ety, &response);
+        }
+    }
+}
+
+/** Leader Completeness
+ * If a log entry is committed in a given term, then that entry will be present
+ * in the logs of the leaders for all higher-numbered terms. §3.6 */
+static void __ensure_leader_completeness(system_t* sys)
+{
+    int i;
+
+    for (i = 0; i < sys->n_nodes; i++)
+    {
+        raft_server_t* r = sys->nodes[i].raft;
+
+        int j;
+        int comi = raft_get_commit_idx(r);
+
+        /* we need to confirm that at least half of the nodes have this */
+        int have = 1;
+
+        if (comi == 0)
+            continue;
+
+        raft_entry_t* ety = raft_get_entry_from_idx(r, comi);
+
+        for (j=0; j < sys->n_nodes; j++)
+        {
+            raft_server_t* r2 = sys->nodes[j].raft;
+
+            if (r == r2)
+                continue;
+
+            /* all the other nodes should not conflict with this */
+
+            raft_entry_t* oety = raft_get_entry_from_idx(r2, comi);
+
+            if (!oety)
+                continue;
+
+            if (!(oety->term != ety->term || oety->id != ety->id))
+            {
+                have += 1;
+            }
+        }
+
+        /* a majority don't have it */
+        if (!(sys->n_nodes / 2 < have))
+        {
+            printf("leaders completeness failed: %lx commit_idx: %d t: %d id: %d\n",
+                   (unsigned long)r,
+                   raft_get_commit_idx(r),
+                   ety->term,
+                   ety->id
+                   );
+            __int_handler(0);
+            abort();
         }
     }
 }
@@ -447,7 +504,7 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, __int_handler);
 
-    srand(atoi(opts.seed)); //time(NULL));
+    srand(atoi(opts.seed));
 
     sys.n_nodes = atoi(opts.NODES);
     sys.nodes = calloc(sys.n_nodes, sizeof(*sys.nodes));
@@ -462,6 +519,9 @@ int main(int argc, char **argv)
 
     while (1)
     {
+        if (opts.debug)
+            printf("\n");
+
         if (random() % 100 < client_rate)
             __push_entry(&sys);
 
@@ -474,7 +534,7 @@ int main(int argc, char **argv)
 
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
-
+        __ensure_leader_completeness(&sys);
         /* sleep(1); */
     }
 }
