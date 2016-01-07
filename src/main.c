@@ -70,7 +70,7 @@ system_t sys;
 
 options_t opts;
 
-static void __int_handler(int dummy)
+static void __print_stats()
 {
     int i;
 
@@ -91,6 +91,11 @@ static void __int_handler(int dummy)
         printf("log_count: %d\n", raft_get_log_count(r));
         printf("\n");
     }
+}
+
+static void __int_handler(int dummy)
+{
+    __print_stats();
 }
 
 /** Raft callback for applying an entry to the finite state machine */
@@ -521,6 +526,8 @@ int main(int argc, char **argv)
 
     int client_rate = atoi(opts.client_rate);
 
+    int max_iters = atoi(opts.iterations);
+    int iters = 0;
     while (1)
     {
         if (opts.debug)
@@ -540,5 +547,11 @@ int main(int argc, char **argv)
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
         /* sleep(1); */
+        iters++;
+
+        if (iters == max_iters)
+            break;
     }
+
+    __print_stats();
 }
