@@ -1,13 +1,14 @@
 virtraft - test raft
 
 Usage:
-  virtraft --nodes NODES [--drop_rate RATE | --client_rate RATE | --seed SEED | --debug]
+  virtraft --nodes NODES [-d RATE | -D RATE | -c RATE | -s SEED | --debug]
   virtraft --version
   virtraft --help
 
 Options:
   -n --nodes              Number of nodes
   -d --drop_rate RATE     Message drop rate 0-100 [default: 0]
+  -D --dupe_rate RATE     Message duplication rate 0-100 [default: 0]
   -c --client_rate RATE   Rate entries are received from the client 0-100 [default: 100]
   -s --seed SEED          The simulation's seed [default: 0]
   -g --debug              Show debug logs

@@ -233,16 +233,20 @@ static int __append_msg(
 
     node_t* n = &sys->nodes[node_id];
 
-    msg_t* m = malloc(sizeof(msg_t));
-    m->type = type;
-    m->len = len;
-    m->sender = raft_get_node(n->raft, raft_get_nodeid(raft));
-    m->data = malloc(len);
-    memcpy(m->data, data, len);
+    do
+    {
+        msg_t* m = malloc(sizeof(msg_t));
+        m->type = type;
+        m->len = len;
+        m->sender = raft_get_node(n->raft, raft_get_nodeid(raft));
+        m->data = malloc(len);
+        memcpy(m->data, data, len);
 
-    /* give to peer */
-    /* peer_connection_t* peer = raft_node_get_udata(node); */
-    llqueue_offer(n->inbox, m);
+        /* give to peer */
+        /* peer_connection_t* peer = raft_node_get_udata(node); */
+        llqueue_offer(n->inbox, m);
+    }
+    while (random() % 100 < atoi(opts.dupe_rate));
 
     return 1;
 }
