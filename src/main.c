@@ -168,7 +168,7 @@ static int __raft_applylog(
                        (unsigned long)other,
                        ety->id,
                        other_ety ? other_ety->id : -999);
-                __print_stats(0);
+                __print_stats();
                 abort();
             }
         }
@@ -592,4 +592,6 @@ int main(int argc, char **argv)
         __print_tsv();
     else
         __print_stats();
+
+    return 0;
 }
