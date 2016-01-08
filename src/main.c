@@ -70,6 +70,39 @@ system_t sys;
 
 options_t opts;
 
+static void __print_tsv()
+{
+    int i;
+
+    printf("node\t");
+    printf("state\t");
+    printf("current_idx\t");
+    printf("last_log_term\t");
+    printf("current_term\t");
+    printf("commit_idx\t");
+    printf("last_applied_idx\t");
+    printf("log_count\t");
+    printf("\n");
+
+    for (i = 0; i < sys.n_nodes; i++)
+    {
+        raft_server_t* r = sys.nodes[i].raft;
+
+        printf("%d:%lx\t", i, (unsigned long)r);
+        printf("%s\t",
+           raft_get_state(r) == RAFT_STATE_LEADER ? "leader" :
+           raft_get_state(r) == RAFT_STATE_CANDIDATE ? "candidate" :
+           "follower");
+        printf("%d\t", raft_get_current_idx(r));
+        printf("%d\t", raft_get_last_log_term(r));
+        printf("%d\t", raft_get_current_term(r));
+        printf("%d\t", raft_get_commit_idx(r));
+        printf("%d\t", raft_get_last_applied_idx(r));
+        printf("%d\t", raft_get_log_count(r));
+        printf("\n");
+    }
+}
+
 static void __print_stats()
 {
     int i;
@@ -78,17 +111,17 @@ static void __print_stats()
     {
         raft_server_t* r = sys.nodes[i].raft;
 
-        printf("node: %d %lx\n", i, (unsigned long)r);
-        printf("state: %s\n",
+        printf("node %d:%lx\n", i, (unsigned long)r);
+        printf("state %s\n",
                raft_get_state(r) == RAFT_STATE_LEADER ? "leader" :
                raft_get_state(r) == RAFT_STATE_CANDIDATE ? "candidate" :
                "follower");
-        printf("current_idx: %d\n", raft_get_current_idx(r));
-        printf("last_log_term: %d\n", raft_get_last_log_term(r));
-        printf("current_term: %d\n", raft_get_current_term(r));
-        printf("commit_idx: %d\n", raft_get_commit_idx(r));
-        printf("last_applied_idx: %d\n", raft_get_last_applied_idx(r));
-        printf("log_count: %d\n", raft_get_log_count(r));
+        printf("current_idx %d\n", raft_get_current_idx(r));
+        printf("last_log_term %d\n", raft_get_last_log_term(r));
+        printf("current_term %d\n", raft_get_current_term(r));
+        printf("commit_idx %d\n", raft_get_commit_idx(r));
+        printf("last_applied_idx %d\n", raft_get_last_applied_idx(r));
+        printf("log_count %d\n", raft_get_log_count(r));
         printf("\n");
     }
 }
@@ -135,7 +168,7 @@ static int __raft_applylog(
                        (unsigned long)other,
                        ety->id,
                        other_ety ? other_ety->id : -999);
-                __int_handler(0);
+                __print_stats(0);
                 abort();
             }
         }
@@ -365,6 +398,7 @@ static void __server_poll_messages(node_t* me, system_t* sys)
     }
 }
 
+// FIXME: this is O(n^2)
 /** Election Safety
  * At most one leader can be elected in a given term. */
 static void __ensure_election_safety(system_t* sys)
@@ -432,6 +466,7 @@ static void __push_entry(system_t* sys)
     }
 }
 
+// FIXME: this is O(n^2)
 /** Leader Completeness
  * If a log entry is committed in a given term, then that entry will be present
  * in the logs of the leaders for all higher-numbered terms. §3.6 */
@@ -518,8 +553,6 @@ int main(int argc, char **argv)
     sys.n_nodes = atoi(opts.NODES);
     sys.nodes = calloc(sys.n_nodes, sizeof(*sys.nodes));
 
-    printf("Starting with %d nodes\n", sys.n_nodes);
-
     /* create server for every node */
     for (i = 0; i < sys.n_nodes; i++)
         __create_node(&sys.nodes[i], i, &sys);
@@ -546,12 +579,17 @@ int main(int argc, char **argv)
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
+
         /* sleep(1); */
+
         iters++;
 
         if (iters == max_iters)
             break;
     }
 
-    __print_stats();
+    if (opts.tsv)
+        __print_tsv();
+    else
+        __print_stats();
 }

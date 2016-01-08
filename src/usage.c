@@ -15,6 +15,7 @@ typedef struct
     int debug;
     int help;
     int nodes;
+    int tsv;
     int version;
 
     /* options */
@@ -38,53 +39,53 @@ struct params
 };
 
 
-#line 76 "src/usage.rl"
+#line 79 "src/usage.rl"
 
 
 
-#line 46 "src/usage.c"
+#line 47 "src/usage.c"
 static const char _params_actions[] = {
 	0, 1, 0, 1, 3, 1, 4, 1, 
-	5, 1, 6, 2, 1, 7, 2, 1, 
-	8, 2, 1, 9, 2, 1, 10, 2, 
-	1, 11, 2, 1, 12, 2, 2, 0
-	
+	5, 1, 6, 1, 7, 2, 1, 8, 
+	2, 1, 9, 2, 1, 10, 2, 1, 
+	11, 2, 1, 12, 2, 1, 13, 2, 
+	2, 0
 };
 
 static const char _params_key_offsets[] = {
 	0, 0, 1, 5, 8, 9, 10, 11, 
 	12, 13, 14, 15, 16, 17, 18, 19, 
-	26, 30, 31, 32, 33, 34, 35, 36, 
-	37, 38, 39, 40, 41, 42, 43, 46, 
-	47, 48, 49, 50, 51, 52, 53, 54, 
-	55, 56, 57, 58, 59, 60, 61, 62, 
-	63, 64, 65, 66, 67, 68, 69, 70, 
-	71, 72, 73, 74, 75, 76, 77, 78, 
-	79, 80, 81, 82, 83, 84, 85, 86, 
-	87, 88, 89, 90, 91, 92, 93, 94, 
-	95, 95
+	26, 31, 32, 33, 34, 35, 36, 37, 
+	38, 39, 40, 41, 42, 43, 44, 47, 
+	48, 49, 50, 51, 52, 53, 54, 55, 
+	56, 57, 58, 59, 60, 61, 62, 63, 
+	64, 65, 66, 67, 68, 69, 70, 71, 
+	72, 73, 74, 75, 76, 77, 78, 79, 
+	80, 81, 82, 83, 84, 85, 86, 87, 
+	88, 89, 90, 91, 92, 93, 94, 95, 
+	96, 97, 98, 99, 99
 };
 
 static const char _params_trans_keys[] = {
 	45, 45, 104, 110, 118, 104, 110, 118, 
 	101, 108, 112, 0, 111, 100, 101, 115, 
 	0, 0, 0, 45, 68, 99, 100, 103, 
-	105, 115, 99, 100, 105, 115, 108, 105, 
-	101, 110, 116, 95, 114, 97, 116, 101, 
-	0, 0, 0, 101, 114, 117, 98, 117, 
-	103, 0, 111, 112, 95, 114, 97, 116, 
-	101, 0, 0, 0, 112, 101, 95, 114, 
-	97, 116, 101, 0, 0, 0, 116, 101, 
-	114, 97, 116, 105, 111, 110, 115, 0, 
-	0, 0, 101, 101, 100, 0, 0, 0, 
-	101, 114, 115, 105, 111, 110, 0, 45, 
-	0
+	105, 115, 99, 100, 105, 115, 116, 108, 
+	105, 101, 110, 116, 95, 114, 97, 116, 
+	101, 0, 0, 0, 101, 114, 117, 98, 
+	117, 103, 0, 111, 112, 95, 114, 97, 
+	116, 101, 0, 0, 0, 112, 101, 95, 
+	114, 97, 116, 101, 0, 0, 0, 116, 
+	101, 114, 97, 116, 105, 111, 110, 115, 
+	0, 0, 0, 101, 101, 100, 0, 0, 
+	0, 115, 118, 0, 101, 114, 115, 105, 
+	111, 110, 0, 45, 0
 };
 
 static const char _params_single_lengths[] = {
 	0, 1, 4, 3, 1, 1, 1, 1, 
 	1, 1, 1, 1, 1, 1, 1, 7, 
-	4, 1, 1, 1, 1, 1, 1, 1, 
+	5, 1, 1, 1, 1, 1, 1, 1, 
 	1, 1, 1, 1, 1, 1, 3, 1, 
 	1, 1, 1, 1, 1, 1, 1, 1, 
 	1, 1, 1, 1, 1, 1, 1, 1, 
@@ -92,7 +93,7 @@ static const char _params_single_lengths[] = {
 	1, 1, 1, 1, 1, 1, 1, 1, 
 	1, 1, 1, 1, 1, 1, 1, 1, 
 	1, 1, 1, 1, 1, 1, 1, 1, 
-	0, 1
+	1, 1, 1, 0, 1
 };
 
 static const char _params_range_lengths[] = {
@@ -106,83 +107,85 @@ static const char _params_range_lengths[] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 0
+	0, 0, 0, 0, 0
 };
 
 static const short _params_index_offsets[] = {
 	0, 0, 2, 7, 11, 13, 15, 17, 
 	19, 21, 23, 25, 27, 29, 31, 33, 
-	41, 46, 48, 50, 52, 54, 56, 58, 
-	60, 62, 64, 66, 68, 70, 72, 76, 
-	78, 80, 82, 84, 86, 88, 90, 92, 
-	94, 96, 98, 100, 102, 104, 106, 108, 
-	110, 112, 114, 116, 118, 120, 122, 124, 
-	126, 128, 130, 132, 134, 136, 138, 140, 
-	142, 144, 146, 148, 150, 152, 154, 156, 
-	158, 160, 162, 164, 166, 168, 170, 172, 
-	174, 175
+	41, 47, 49, 51, 53, 55, 57, 59, 
+	61, 63, 65, 67, 69, 71, 73, 77, 
+	79, 81, 83, 85, 87, 89, 91, 93, 
+	95, 97, 99, 101, 103, 105, 107, 109, 
+	111, 113, 115, 117, 119, 121, 123, 125, 
+	127, 129, 131, 133, 135, 137, 139, 141, 
+	143, 145, 147, 149, 151, 153, 155, 157, 
+	159, 161, 163, 165, 167, 169, 171, 173, 
+	175, 177, 179, 181, 182
 };
 
 static const char _params_trans_targs[] = {
-	2, 0, 3, 7, 12, 79, 0, 4, 
-	8, 73, 0, 5, 0, 6, 0, 7, 
-	0, 80, 0, 9, 0, 10, 0, 11, 
-	0, 12, 0, 13, 0, 0, 14, 81, 
+	2, 0, 3, 7, 12, 82, 0, 4, 
+	8, 76, 0, 5, 0, 6, 0, 7, 
+	0, 83, 0, 9, 0, 10, 0, 11, 
+	0, 12, 0, 13, 0, 0, 14, 84, 
 	14, 16, 52, 27, 42, 34, 64, 70, 
-	0, 17, 30, 55, 67, 0, 18, 0, 
-	19, 0, 20, 0, 21, 0, 22, 0, 
-	23, 0, 24, 0, 25, 0, 26, 0, 
-	27, 0, 28, 0, 0, 29, 81, 29, 
-	31, 35, 45, 0, 32, 0, 33, 0, 
-	34, 0, 81, 0, 36, 0, 37, 0, 
-	38, 0, 39, 0, 40, 0, 41, 0, 
-	42, 0, 43, 0, 0, 44, 81, 44, 
-	46, 0, 47, 0, 48, 0, 49, 0, 
-	50, 0, 51, 0, 52, 0, 53, 0, 
-	0, 54, 81, 54, 56, 0, 57, 0, 
-	58, 0, 59, 0, 60, 0, 61, 0, 
-	62, 0, 63, 0, 64, 0, 65, 0, 
-	0, 66, 81, 66, 68, 0, 69, 0, 
-	70, 0, 71, 0, 0, 72, 81, 72, 
-	74, 0, 75, 0, 76, 0, 77, 0, 
-	78, 0, 79, 0, 80, 0, 0, 15, 
-	0, 0
+	0, 17, 30, 55, 67, 73, 0, 18, 
+	0, 19, 0, 20, 0, 21, 0, 22, 
+	0, 23, 0, 24, 0, 25, 0, 26, 
+	0, 27, 0, 28, 0, 0, 29, 84, 
+	29, 31, 35, 45, 0, 32, 0, 33, 
+	0, 34, 0, 84, 0, 36, 0, 37, 
+	0, 38, 0, 39, 0, 40, 0, 41, 
+	0, 42, 0, 43, 0, 0, 44, 84, 
+	44, 46, 0, 47, 0, 48, 0, 49, 
+	0, 50, 0, 51, 0, 52, 0, 53, 
+	0, 0, 54, 84, 54, 56, 0, 57, 
+	0, 58, 0, 59, 0, 60, 0, 61, 
+	0, 62, 0, 63, 0, 64, 0, 65, 
+	0, 0, 66, 84, 66, 68, 0, 69, 
+	0, 70, 0, 71, 0, 0, 72, 84, 
+	72, 74, 0, 75, 0, 84, 0, 77, 
+	0, 78, 0, 79, 0, 80, 0, 81, 
+	0, 82, 0, 83, 0, 0, 15, 0, 
+	0
 };
 
 static const char _params_trans_actions[] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 5, 0, 0, 0, 0, 0, 0, 
-	0, 0, 0, 7, 0, 0, 29, 26, 
+	0, 0, 0, 7, 0, 0, 31, 28, 
 	1, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 0, 0, 0, 0, 29, 11, 1, 
+	0, 0, 0, 0, 0, 0, 31, 13, 
+	1, 0, 0, 0, 0, 0, 0, 0, 
+	0, 0, 0, 3, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 0, 3, 0, 0, 0, 0, 0, 
+	0, 0, 0, 0, 0, 0, 31, 16, 
+	1, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 0, 0, 0, 0, 29, 14, 1, 
-	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 29, 17, 1, 0, 0, 0, 0, 
+	0, 0, 31, 19, 1, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 29, 20, 1, 0, 0, 0, 0, 
-	0, 0, 0, 0, 0, 29, 23, 1, 
+	0, 0, 31, 22, 1, 0, 0, 0, 
+	0, 0, 0, 0, 0, 0, 31, 25, 
+	1, 0, 0, 0, 0, 9, 0, 0, 
 	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 0, 0, 0, 9, 0, 0, 0, 
-	0, 0
+	0, 0, 0, 11, 0, 0, 0, 0, 
+	0
 };
 
 static const int params_start = 1;
-static const int params_first_final = 80;
+static const int params_first_final = 83;
 static const int params_error = 0;
 
 static const int params_en_main = 1;
 
 
-#line 79 "src/usage.rl"
+#line 82 "src/usage.rl"
 
 static void params_init(struct params *fsm, options_t* opt)
 {
@@ -197,12 +200,12 @@ static void params_init(struct params *fsm, options_t* opt)
     fsm->opt->seed = strdup("0");
 
     
-#line 201 "src/usage.c"
+#line 204 "src/usage.c"
 	{
 	 fsm->cs = params_start;
 	}
 
-#line 93 "src/usage.rl"
+#line 96 "src/usage.rl"
 }
 
 static void params_execute(struct params *fsm, const char *data, int len)
@@ -211,7 +214,7 @@ static void params_execute(struct params *fsm, const char *data, int len)
     const char *pe = data + len;
 
     
-#line 215 "src/usage.c"
+#line 218 "src/usage.c"
 	{
 	int _klen;
 	unsigned int _trans;
@@ -285,64 +288,68 @@ _match:
 		switch ( *_acts++ )
 		{
 	case 0:
-#line 42 "src/usage.rl"
+#line 43 "src/usage.rl"
 	{
         if (fsm->buflen < BUFLEN)
             fsm->buffer[fsm->buflen++] = (*p);
     }
 	break;
 	case 1:
-#line 47 "src/usage.rl"
+#line 48 "src/usage.rl"
 	{
         if (fsm->buflen < BUFLEN)
             fsm->buffer[fsm->buflen++] = 0;
     }
 	break;
 	case 2:
-#line 52 "src/usage.rl"
+#line 53 "src/usage.rl"
 	{ fsm->buflen = 0; }
 	break;
 	case 3:
-#line 55 "src/usage.rl"
+#line 56 "src/usage.rl"
 	{ fsm->opt->debug = 1; }
 	break;
 	case 4:
-#line 56 "src/usage.rl"
+#line 57 "src/usage.rl"
 	{ fsm->opt->help = 1; }
 	break;
 	case 5:
-#line 57 "src/usage.rl"
+#line 58 "src/usage.rl"
 	{ fsm->opt->nodes = 1; }
 	break;
 	case 6:
-#line 58 "src/usage.rl"
-	{ fsm->opt->version = 1; }
+#line 59 "src/usage.rl"
+	{ fsm->opt->tsv = 1; }
 	break;
 	case 7:
-#line 59 "src/usage.rl"
-	{ fsm->opt->client_rate = strdup(fsm->buffer); }
+#line 60 "src/usage.rl"
+	{ fsm->opt->version = 1; }
 	break;
 	case 8:
-#line 60 "src/usage.rl"
-	{ fsm->opt->drop_rate = strdup(fsm->buffer); }
+#line 61 "src/usage.rl"
+	{ fsm->opt->client_rate = strdup(fsm->buffer); }
 	break;
 	case 9:
-#line 61 "src/usage.rl"
-	{ fsm->opt->dupe_rate = strdup(fsm->buffer); }
+#line 62 "src/usage.rl"
+	{ fsm->opt->drop_rate = strdup(fsm->buffer); }
 	break;
 	case 10:
-#line 62 "src/usage.rl"
-	{ fsm->opt->iterations = strdup(fsm->buffer); }
+#line 63 "src/usage.rl"
+	{ fsm->opt->dupe_rate = strdup(fsm->buffer); }
 	break;
 	case 11:
-#line 63 "src/usage.rl"
-	{ fsm->opt->seed = strdup(fsm->buffer); }
+#line 64 "src/usage.rl"
+	{ fsm->opt->iterations = strdup(fsm->buffer); }
 	break;
 	case 12:
-#line 64 "src/usage.rl"
+#line 65 "src/usage.rl"
+	{ fsm->opt->seed = strdup(fsm->buffer); }
+	break;
+	case 13:
+#line 66 "src/usage.rl"
 	{ fsm->opt->NODES = strdup(fsm->buffer); }
 	break;
-#line 346 "src/usage.c"
+#line 353 "src/usage.c"
 		}
 	}
 
@@ -355,7 +362,7 @@ _again:
 	_out: {}
 	}
 
-#line 101 "src/usage.rl"
+#line 104 "src/usage.rl"
 }
 
 static int params_finish(struct params *fsm)
@@ -372,7 +379,7 @@ static void show_usage()
     fprintf(stdout, "virtraft - test raft\n");
     fprintf(stdout, "\n");
     fprintf(stdout, "Usage:\n");
-    fprintf(stdout, "  virtraft --nodes NODES [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | --debug]\n");
+    fprintf(stdout, "  virtraft --nodes NODES [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | --tsv | --debug]\n");
     fprintf(stdout, "  virtraft --version\n");
     fprintf(stdout, "  virtraft --help\n");
     fprintf(stdout, "\n");
@@ -383,9 +390,15 @@ static void show_usage()
     fprintf(stdout, "  -c --client_rate RATE   Rate entries are received from the client 0-100 [default: 100]\n");
     fprintf(stdout, "  -s --seed SEED          The simulation's seed [default: 0]\n");
     fprintf(stdout, "  -i --iterations ITERS   Number of iterations before the simulation ends [default: -1]\n");
+    fprintf(stdout, "  --tsv                   Output node status tab separated values at exit\n");
     fprintf(stdout, "  -g --debug              Show debug logs\n");
     fprintf(stdout, "  -v --version            Display version.\n");
     fprintf(stdout, "  -h --help               Prints a short usage summary.\n");
+    fprintf(stdout, "\n");
+    fprintf(stdout, "Examples:\n");
+    fprintf(stdout, "\n");
+    fprintf(stdout, "  Output a node status table:\n");
+    fprintf(stdout, "    build/virtraft --nodes 3 --iterations 1000 --tsv | column -t\n");
     fprintf(stdout, "\n");
 }
 

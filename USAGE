@@ -1,7 +1,7 @@
 virtraft - test raft
 
 Usage:
-  virtraft --nodes NODES [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | --debug]
+  virtraft --nodes NODES [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | --tsv | --debug]
   virtraft --version
   virtraft --help
 
@@ -12,6 +12,12 @@ Options:
   -c --client_rate RATE   Rate entries are received from the client 0-100 [default: 100]
   -s --seed SEED          The simulation's seed [default: 0]
   -i --iterations ITERS   Number of iterations before the simulation ends [default: -1]
+  --tsv                   Output node status tab separated values at exit
   -g --debug              Show debug logs
   -v --version            Display version.
   -h --help               Prints a short usage summary.
+
+Examples:
+
+  Output a node status table:
+    build/virtraft --nodes 3 --iterations 1000 --tsv | column -t
