@@ -64,6 +64,9 @@ typedef struct
     int n_nodes;
     int n_entries;
     node_t* leader;
+
+    /* maximum number of entries spotted in an append entries message */
+    int max_entries_in_ae;
 } system_t;
 
 system_t sys;
@@ -135,8 +138,7 @@ static void __int_handler(int dummy)
 static int __raft_applylog(
     raft_server_t* raft,
     void *udata,
-    const unsigned char *data,
-    const int len
+    raft_entry_t *entry
     )
 {
     /* State Machine Safety */
@@ -314,6 +316,11 @@ int __raft_send_appendentries(raft_server_t* raft,
     msg_entry_t* entries = calloc(1, sizeof(msg_entry_t) * msg->n_entries);
     memcpy(entries, msg->entries, sizeof(msg_entry_t) * msg->n_entries);
     msg->entries = entries;
+
+    /* collect stats */
+    if (sys.max_entries_in_ae < msg->n_entries)
+        sys.max_entries_in_ae = msg->n_entries;
+
     return __append_msg(udata, msg, MSG_APPENDENTRIES, sizeof(*msg), node,
                         raft);
 }
@@ -591,7 +598,10 @@ int main(int argc, char **argv)
     if (opts.tsv)
         __print_tsv();
     else
+    {
         __print_stats();
+        printf("Maximum appendentries size: %d\n", sys.max_entries_in_ae);
+    }
 
     return 0;
 }

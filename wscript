@@ -51,8 +51,8 @@ def build(bld):
         lib.append('rt')
 
     clibs = """
-        raft
         linked-list-queue
+        raft
         """.split()
 
     bld.program(
