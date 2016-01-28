@@ -18,6 +18,14 @@ typedef enum {
     RAFT_STATE_LEADER
 } raft_state_e;
 
+typedef enum {
+    RAFT_LOGTYPE_NORMAL,
+    RAFT_LOGTYPE_ADD_NONVOTING_NODE,
+    RAFT_LOGTYPE_ADD_NODE,
+    RAFT_LOGTYPE_REMOVE_NODE,
+    RAFT_LOGTYPE_NUM,
+} raft_logtype_e;
+
 typedef struct
 {
     void *buf;
@@ -33,6 +41,9 @@ typedef struct
 
     /** the entry's unique ID */
     unsigned int id;
+
+    /** type of entry */
+    int type;
 
     raft_entry_data_t data;
 } raft_entry_t;
@@ -169,6 +180,7 @@ typedef int (
     );
 
 /** Callback for detecting when non-voting nodes have obtained enough logs.
+ * This triggers only when there are no pending configuration changes.
  * @param[in] raft The Raft server making this callback
  * @param[in] user_data User data that is passed from Raft server
  * @param[in] node The node */
@@ -201,16 +213,14 @@ typedef void (
 /** Callback for applying this log entry to the state machine.
  * @param[in] raft The Raft server making this callback
  * @param[in] user_data User data that is passed from Raft server
- * @param[in] data Data to be applied to the log
- * @param[in] len Length in bytes of data to be applied
+ * @param[in] ety Log entry to be applied
  * @return 0 on success */
 typedef int (
 *func_applylog_f
 )   (
     raft_server_t* raft,
     void *user_data,
-    const unsigned char *log_data,
-    const int log_len
+    raft_entry_t* ety
     );
 
 /** Callback for saving who we voted for to disk.
@@ -349,6 +359,10 @@ raft_node_t* raft_add_node(raft_server_t* me, void* user_data, int id, int is_se
 /** Add a node which does not participate in voting.
  * Parameters are identical to raft_add_node */
 raft_node_t* raft_add_non_voting_node(raft_server_t* me_, void* udata, int id, int is_self);
+
+/** Remove node.
+ * @param node The node to be removed. */
+void raft_remove_node(raft_server_t* me_, raft_node_t* node);
 
 /** Set election timeout.
  * The amount of time that needs to elapse before we assume the leader is down
@@ -560,6 +574,11 @@ int raft_get_my_id(raft_server_t* me);
  * @param[in] node The server to vote for */
 void raft_vote(raft_server_t* me_, raft_node_t* node);
 
+/** Vote for a server.
+ * This should be used to reload persistent state, ie. the voted-for field.
+ * @param[in] nodeid The server to vote for by nodeid */
+void raft_vote_for_nodeid(raft_server_t* me_, const int nodeid);
+
 /** Set the current term.
  * This should be used to reload persistent state, ie. the current_term field.
  * @param[in] term The new current term */
@@ -611,5 +630,20 @@ int raft_node_is_voting(raft_node_t* me_);
 
 /** Apply all entries up to the commit index */
 void raft_apply_all(raft_server_t* me_);
+
+/** Become leader
+ * WARNING: this is a dangerous function call. It could lead to your cluster
+ * losing it's consensus guarantees. */
+void raft_become_leader(raft_server_t* me);
+
+/** Determine if entry is voting configuration change.
+ * @param[in] ety The entry to query.
+ * @return 1 if this is a voting configuration change. */
+int raft_entry_is_voting_cfg_change(raft_entry_t* ety);
+
+/** Determine if entry is configuration change.
+ * @param[in] ety The entry to query.
+ * @return 1 if this is a configuration change. */
+int raft_entry_is_cfg_change(raft_entry_t* ety);
 
 #endif /* RAFT_H_ */
