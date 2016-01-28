@@ -63,10 +63,13 @@ typedef struct
     node_t* nodes;
     int n_nodes;
     int n_entries;
-    node_t* leader;
+
+    raft_node_t* leader;
 
     /* maximum number of entries spotted in an append entries message */
     int max_entries_in_ae;
+
+    int leadership_changes;
 } system_t;
 
 system_t sys;
@@ -587,6 +590,12 @@ int main(int argc, char **argv)
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
 
+        /* collect stats */
+        if (sys.leader != raft_get_current_leader_node(sys.nodes[0].raft))
+            sys.leadership_changes += 1;
+
+        sys.leader = raft_get_current_leader_node(sys.nodes[0].raft);
+
         /* sleep(1); */
 
         iters++;
@@ -601,6 +610,7 @@ int main(int argc, char **argv)
     {
         __print_stats();
         printf("Maximum appendentries size: %d\n", sys.max_entries_in_ae);
+        printf("Leadership changes: %d\n", sys.leadership_changes);
     }
 
     return 0;
