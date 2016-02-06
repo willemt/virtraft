@@ -465,7 +465,7 @@ static void __push_entry(system_t* sys)
         if (raft_is_leader(r))
         {
             /* printf("adding %lx\n", (unsigned long)r); */
-            raft_entry_t* ety = calloc(1, sizeof(*ety));
+            raft_entry_t* ety = calloc(1, sizeof(raft_entry_t));
             ety->id = sys->n_entries++;
             ety->data.buf = malloc(16);
             ety->data.len = 16;
