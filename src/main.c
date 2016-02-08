@@ -56,6 +56,8 @@ typedef struct
     peer_connection_t* conns;
 
     void* inbox;
+
+    int partitioned;
 } node_t;
 
 typedef struct
@@ -70,6 +72,8 @@ typedef struct
     int max_entries_in_ae;
 
     int leadership_changes;
+
+    int client_rate;
 } system_t;
 
 system_t sys;
@@ -276,6 +280,9 @@ static int __append_msg(
 
     node_t* n = &sys->nodes[node_id];
 
+    if (n->partitioned)
+        return 0;
+
     do
     {
         msg_t* m = malloc(sizeof(msg_t));
@@ -408,6 +415,17 @@ static void __server_poll_messages(node_t* me, system_t* sys)
     }
 }
 
+static void __server_drop_messages(node_t* me, system_t* sys)
+{
+    msg_t* m;
+
+    /* while ((m = llqueue_poll(me->inbox))) */
+
+    /* Drop one message */
+    if ((m = llqueue_poll(me->inbox)))
+        free(m);
+}
+
 // FIXME: this is O(n^2)
 /** Election Safety
  * At most one leader can be elected in a given term. */
@@ -534,6 +552,36 @@ static void __ensure_leader_completeness(system_t* sys)
     }
 }
 
+static void __periodic(system_t* sys)
+{
+    int i;
+
+    if (opts.debug)
+        printf("\n");
+
+    if (random() % 100 < sys->client_rate)
+        __push_entry(sys);
+
+    for (i = 0; i < sys->n_nodes; i++)
+    {
+        __server_poll_messages(&sys->nodes[i], sys);
+        if (!opts.no_random_period)
+            raft_periodic(sys->nodes[i].raft, random() % 200);
+    }
+
+    __ensure_election_safety(sys);
+    __ensure_log_matching(sys);
+    __ensure_leader_completeness(sys);
+
+    /* collect stats */
+    if (sys->leader != raft_get_current_leader_node(sys->nodes[0].raft))
+        sys->leadership_changes += 1;
+
+    sys->leader = raft_get_current_leader_node(sys->nodes[0].raft);
+}
+
+#include "command_parser.c"
+
 int main(int argc, char **argv)
 {
     int e, i;
@@ -567,42 +615,28 @@ int main(int argc, char **argv)
     for (i = 0; i < sys.n_nodes; i++)
         __create_node(&sys.nodes[i], i, &sys);
 
-    int client_rate = atoi(opts.client_rate);
+    sys.client_rate = atoi(opts.client_rate);
 
-    int max_iters = atoi(opts.iterations);
-    int iters = 0;
-    while (1)
+    /* We're being fed commands via stdin.
+     * This is the fuzzer's entry point */
+    if (!feof(stdin))
     {
-        if (opts.debug)
-            printf("\n");
+        parse_result_t result;
+        parse_commands(&sys, &result);
 
-        if (random() % 100 < client_rate)
-            __push_entry(&sys);
-
-        for (i = 0; i < sys.n_nodes; i++)
-            /* if (random() % 100 < 90) */
-                __server_poll_messages(&sys.nodes[i], &sys);
-
-        for (i = 0; i < sys.n_nodes; i++)
-            raft_periodic(sys.nodes[i].raft, random() % 200);
-
-        __ensure_election_safety(&sys);
-        __ensure_log_matching(&sys);
-        __ensure_leader_completeness(&sys);
-
-        /* collect stats */
-        if (sys.leader != raft_get_current_leader_node(sys.nodes[0].raft))
-            sys.leadership_changes += 1;
-
-        sys.leader = raft_get_current_leader_node(sys.nodes[0].raft);
-
-        /* sleep(1); */
-
-        iters++;
-
-        if (iters == max_iters)
-            break;
+        printf("%d ", sys.max_entries_in_ae);
+        printf("%d | ", sys.leadership_changes);
+        for (i=0; i<sys.n_nodes; i++)
+        {
+            printf("%d ", raft_get_current_idx(sys.nodes[i].raft));
+            printf("%d, ", raft_get_current_term(sys.nodes[i].raft));
+        }
+        return 0;
     }
+
+    int iters, max_iters = atoi(opts.iterations);
+    for (iters = 0; iters < max_iters; iters++)
+        __periodic(&sys);
 
     if (opts.tsv)
         __print_tsv();
