@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <fcntl.h>
 
 #include "raft.h"
 #include "linked_list_queue.h"
@@ -619,11 +620,10 @@ int main(int argc, char **argv)
 
     /* We're being fed commands via stdin.
      * This is the fuzzer's entry point */
-    if (!feof(stdin))
+    fcntl(0, F_SETFL, O_NONBLOCK);
+    parse_result_t result;
+    if (1 == parse_commands(&sys, &result))
     {
-        parse_result_t result;
-        parse_commands(&sys, &result);
-
         printf("%d ", sys.max_entries_in_ae);
         printf("%d | ", sys.leadership_changes);
         for (i=0; i<sys.n_nodes; i++)
@@ -635,7 +635,7 @@ int main(int argc, char **argv)
     }
 
     int iters, max_iters = atoi(opts.iterations);
-    for (iters = 0; iters < max_iters; iters++)
+    for (iters = 0; iters < max_iters || max_iters == -1; iters++)
         __periodic(&sys);
 
     if (opts.tsv)

@@ -90,23 +90,22 @@ static int __finish(struct path_parse *fsm)
 
 int parse_commands(system_t *sys, parse_result_t *result)
 {
+    int ran = 0;
     struct path_parse pp;
     __init(&pp, sys, result);
 
-    #define BUFSIZE 1
-
-    char buf[BUFSIZE];
+    char buf[1];
 
     while (0 < read(0, buf, 1))
     {
         // printf("reading: %c\n", *buf);
+        ran = 1;
         if (*buf == '\0')
             break;
-        __execute(&pp, buf, BUFSIZE);
+        __execute(&pp, buf, 1);
     }
 
-    if (__finish(&pp) != 1)
-        return -1;
+    __finish(&pp);
 
-    return 0;
+    return ran;
 }

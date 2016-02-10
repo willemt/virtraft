@@ -17,82 +17,73 @@ struct path_parse
 };
 
 
-#line 98 "src/command_parser.rl"
+#line 62 "src/command_parser.rl"
 
 
 
 #line 25 "src/command_parser.c"
 static const char _path_parse_actions[] = {
 	0, 1, 0, 1, 1, 1, 2, 1, 
-	3, 1, 4, 1, 5
+	3, 1, 4
 };
 
 static const char _path_parse_key_offsets[] = {
 	0, 0, 1, 2, 3, 5, 6, 7, 
 	8, 9, 11, 12, 13, 15, 16, 17, 
-	18, 20, 21, 22, 23, 25, 26, 27, 
-	28, 29, 31
+	18, 20, 21, 22, 23, 25
 };
 
 static const char _path_parse_trans_keys[] = {
 	114, 111, 112, 48, 57, 110, 116, 114, 
 	121, 97, 101, 114, 116, 48, 57, 114, 
 	105, 100, 48, 57, 101, 99, 118, 48, 
-	57, 111, 103, 103, 108, 48, 57, 100, 
-	101, 112, 114, 116, 0
+	57, 100, 101, 112, 114, 0
 };
 
 static const char _path_parse_single_lengths[] = {
 	0, 1, 1, 1, 0, 1, 1, 1, 
 	1, 2, 1, 1, 0, 1, 1, 1, 
-	0, 1, 1, 1, 0, 1, 1, 1, 
-	1, 0, 5
+	0, 1, 1, 1, 0, 4
 };
 
 static const char _path_parse_range_lengths[] = {
 	0, 0, 0, 0, 1, 0, 0, 0, 
 	0, 0, 0, 0, 1, 0, 0, 0, 
-	1, 0, 0, 0, 1, 0, 0, 0, 
-	0, 1, 0
+	1, 0, 0, 0, 1, 0
 };
 
 static const char _path_parse_index_offsets[] = {
 	0, 0, 2, 4, 6, 8, 10, 12, 
 	14, 16, 19, 21, 23, 25, 27, 29, 
-	31, 33, 35, 37, 39, 41, 43, 45, 
-	47, 49, 51
+	31, 33, 35, 37, 39, 41
 };
 
 static const char _path_parse_trans_targs[] = {
-	2, 0, 3, 0, 4, 0, 26, 0, 
-	6, 0, 7, 0, 8, 0, 26, 0, 
-	10, 13, 0, 11, 0, 12, 0, 26, 
-	0, 14, 0, 15, 0, 16, 0, 26, 
-	0, 18, 0, 19, 0, 20, 0, 26, 
-	0, 22, 0, 23, 0, 24, 0, 25, 
-	0, 26, 0, 1, 5, 9, 17, 21, 
-	0, 0
+	2, 0, 3, 0, 4, 0, 21, 0, 
+	6, 0, 7, 0, 8, 0, 21, 0, 
+	10, 13, 0, 11, 0, 12, 0, 21, 
+	0, 14, 0, 15, 0, 16, 0, 21, 
+	0, 18, 0, 19, 0, 20, 0, 21, 
+	0, 1, 5, 9, 17, 0, 0
 };
 
 static const char _path_parse_trans_actions[] = {
-	0, 0, 0, 0, 0, 0, 9, 0, 
+	0, 0, 0, 0, 0, 0, 7, 0, 
 	0, 0, 0, 0, 0, 0, 1, 0, 
-	0, 0, 0, 0, 0, 0, 0, 11, 
+	0, 0, 0, 0, 0, 0, 0, 9, 
+	0, 0, 0, 0, 0, 0, 0, 3, 
 	0, 0, 0, 0, 0, 0, 0, 5, 
-	0, 0, 0, 0, 0, 0, 0, 7, 
-	0, 0, 0, 0, 0, 0, 0, 0, 
-	0, 3, 0, 0, 0, 0, 0, 0, 
-	0, 0
+	0, 0, 0, 0, 0, 0, 0
 };
 
-static const int path_parse_start = 26;
-static const int path_parse_first_final = 26;
+static const int path_parse_start = 21;
+static const int path_parse_first_final = 21;
 static const int path_parse_error = 0;
 
-static const int path_parse_en_main = 26;
+static const int path_parse_en_main = 21;
 
 
-#line 101 "src/command_parser.rl"
+#line 65 "src/command_parser.rl"
 
 static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result)
 {
@@ -100,12 +91,12 @@ static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result
     fsm->r = result;
     fsm->node_id = 0;
     
-#line 104 "src/command_parser.c"
+#line 95 "src/command_parser.c"
 	{
 	 fsm->cs = path_parse_start;
 	}
 
-#line 108 "src/command_parser.rl"
+#line 72 "src/command_parser.rl"
 }
 
 static void __execute(struct path_parse *fsm, const char *data, size_t len)
@@ -114,7 +105,7 @@ static void __execute(struct path_parse *fsm, const char *data, size_t len)
     const char *pe = data + len;
     //const char *eof = data + len;
     
-#line 118 "src/command_parser.c"
+#line 109 "src/command_parser.c"
 	{
 	int _klen;
 	unsigned int _trans;
@@ -191,70 +182,40 @@ _match:
 #line 24 "src/command_parser.rl"
 	{
         __periodic(&sys);
-        // __push_entry(fsm->sys);
     }
 	break;
 	case 1:
-#line 29 "src/command_parser.rl"
+#line 28 "src/command_parser.rl"
 	{
-        //printf("toggle connection %c\n", fc);
-    }
-	break;
-	case 2:
-#line 39 "src/command_parser.rl"
-	{
-        //__push_entry(fsm->sys);
-        //__server_poll_messages(&sys.nodes[fc - '0'], &sys);
-        //raft_periodic(sys.nodes[fc - '0'].raft, 100);
-
         raft_periodic(sys.nodes[(*p) - '0'].raft, 500);
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
     }
 	break;
-	case 3:
-#line 50 "src/command_parser.rl"
+	case 2:
+#line 35 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
-
         __server_poll_messages(&sys.nodes[(*p) - '0'], &sys);
     }
 	break;
-	case 4:
-#line 56 "src/command_parser.rl"
+	case 3:
+#line 40 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
-
         __server_drop_messages(&sys.nodes[(*p) - '0'], &sys);
     }
 	break;
-	case 5:
-#line 62 "src/command_parser.rl"
+	case 4:
+#line 45 "src/command_parser.rl"
 	{
-        //__periodic(&sys);
-
         int node_id1 = *(p) - '0';
-        //int node_id2 = *(fpc) - '0';
-
         node_t* node = &sys.nodes[node_id1];
         node->partitioned = !node->partitioned;
-
-        /*
-        peer_connection_t* conn = node->conn;
-        while (conn)
-        {
-            if (node_id2 == raft_node_get_id(conn->node))
-            {
-                conn->disconnected = !conn->disconnected;
-                break;
-            }
-            conn = conn->next;
-        }
-        */
     }
 	break;
-#line 258 "src/command_parser.c"
+#line 219 "src/command_parser.c"
 		}
 	}
 
@@ -267,7 +228,7 @@ _again:
 	_out: {}
 	}
 
-#line 116 "src/command_parser.rl"
+#line 80 "src/command_parser.rl"
 }
 
 static int __finish(struct path_parse *fsm)
@@ -281,23 +242,22 @@ static int __finish(struct path_parse *fsm)
 
 int parse_commands(system_t *sys, parse_result_t *result)
 {
+    int ran = 0;
     struct path_parse pp;
     __init(&pp, sys, result);
 
-    #define BUFSIZE 1
-
-    char buf[BUFSIZE];
+    char buf[1];
 
     while (0 < read(0, buf, 1))
     {
         // printf("reading: %c\n", *buf);
+        ran = 1;
         if (*buf == '\0')
             break;
-        __execute(&pp, buf, BUFSIZE);
+        __execute(&pp, buf, 1);
     }
 
-    if (__finish(&pp) != 1)
-        return -1;
+    __finish(&pp);
 
-    return 0;
+    return ran;
 }
