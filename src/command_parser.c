@@ -187,7 +187,7 @@ _match:
 	case 1:
 #line 28 "src/command_parser.rl"
 	{
-        raft_periodic(sys.nodes[(*p) - '0'].raft, 500);
+        raft_periodic(sys.servers[(*p) - '0'].raft, 500);
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
@@ -197,22 +197,22 @@ _match:
 #line 35 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
-        __server_poll_messages(&sys.nodes[(*p) - '0'], &sys);
+        __server_poll_messages(&sys.servers[(*p) - '0'], &sys);
     }
 	break;
 	case 3:
 #line 40 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
-        __server_drop_messages(&sys.nodes[(*p) - '0'], &sys);
+        __server_drop_messages(&sys.servers[(*p) - '0'], &sys);
     }
 	break;
 	case 4:
 #line 45 "src/command_parser.rl"
 	{
         int node_id1 = *(p) - '0';
-        node_t* node = &sys.nodes[node_id1];
-        node->partitioned = !node->partitioned;
+        server_t* sv = &sys.servers[node_id1];
+        sv->partitioned = !sv->partitioned;
     }
 	break;
 #line 219 "src/command_parser.c"

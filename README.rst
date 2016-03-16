@@ -16,4 +16,4 @@ A network of 3 nodes with a message drop rate of 50%, message duplication rate o
 .. code-block:: bash
    :class: ignore
 
-   build/virtraft --nodes 3 --drop_rate 50 --dupe_rate 20 --seed 2
+   build/virtraft --servers 3 --drop_rate 50 --dupe_rate 20 --seed 2

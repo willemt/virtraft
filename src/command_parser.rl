@@ -26,7 +26,7 @@ struct path_parse
     }
 
     action periodic {
-        raft_periodic(sys.nodes[fc - '0'].raft, 500);
+        raft_periodic(sys.servers[fc - '0'].raft, 500);
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
@@ -34,18 +34,18 @@ struct path_parse
 
     action receive_msg_from_inbox {
         __push_entry(fsm->sys);
-        __server_poll_messages(&sys.nodes[fc - '0'], &sys);
+        __server_poll_messages(&sys.servers[fc - '0'], &sys);
     }
 
     action drop_msg_from_inbox {
         __push_entry(fsm->sys);
-        __server_drop_messages(&sys.nodes[fc - '0'], &sys);
+        __server_drop_messages(&sys.servers[fc - '0'], &sys);
     }
 
     action partition {
         int node_id1 = *(fpc) - '0';
-        node_t* node = &sys.nodes[node_id1];
-        node->partitioned = !node->partitioned;
+        server_t* sv = &sys.servers[node_id1];
+        sv->partitioned = !sv->partitioned;
     }
 
     unreserved  = alnum | "-" | "." | "_" | "~" | "=";

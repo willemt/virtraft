@@ -1,12 +1,12 @@
 virtraft - test raft
 
 Usage:
-  virtraft --nodes NODES [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | -p | --tsv | --debug]
+  virtraft --servers SERVERS [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | -p | --tsv | --debug]
   virtraft --version
   virtraft --help
 
 Options:
-  -n --nodes              Number of nodes
+  -n --servers SERVERS    Number of servers
   -d --drop_rate RATE     Message drop rate 0-100 [default: 0]
   -D --dupe_rate RATE     Message duplication rate 0-100 [default: 0]
   -c --client_rate RATE   Rate entries are received from the client 0-100 [default: 100]
@@ -21,4 +21,4 @@ Options:
 Examples:
 
   Output a node status table:
-    build/virtraft --nodes 3 --iterations 1000 --tsv | column -t
+    build/virtraft --servers 3 --iterations 1000 --tsv | column -t

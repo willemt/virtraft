@@ -59,19 +59,20 @@ typedef struct
     void* inbox;
 
     int partitioned;
-} node_t;
+} server_t;
 
 typedef struct
 {
-    node_t* nodes;
-    int n_nodes;
+    server_t* servers;
+    int n_servers;
     int n_entries;
 
     raft_node_t* leader;
 
-    /* maximum number of entries spotted in an append entries message */
+    /* stat: max number of entries spotted in an appendentries message */
     int max_entries_in_ae;
 
+    /* stat: number of leadership changes */
     int leadership_changes;
 
     int client_rate;
@@ -95,9 +96,10 @@ static void __print_tsv()
     printf("log_count\t");
     printf("\n");
 
-    for (i = 0; i < sys.n_nodes; i++)
+    for (i = 0; i < sys.n_servers; i++)
     {
-        raft_server_t* r = sys.nodes[i].raft;
+        server_t* sv = &sys.servers[i];
+        raft_server_t* r = sv->raft;
 
         printf("%d:%lx\t", i, (unsigned long)r);
         printf("%s\t",
@@ -118,9 +120,9 @@ static void __print_stats()
 {
     int i;
 
-    for (i = 0; i < sys.n_nodes; i++)
+    for (i = 0; i < sys.n_servers; i++)
     {
-        raft_server_t* r = sys.nodes[i].raft;
+        raft_server_t* r = sys.servers[i].raft;
 
         printf("node %d:%lx\n", i, (unsigned long)r);
         printf("state %s\n",
@@ -158,9 +160,9 @@ static int __raft_applylog(
 
     assert(last_applied_idx <= raft_get_current_idx(raft));
 
-    for (i = 0; i < sys.n_nodes; i++)
+    for (i = 0; i < sys.n_servers; i++)
     {
-        raft_server_t* other = sys.nodes[i].raft;
+        raft_server_t* other = sys.servers[i].raft;
 
         if (other == raft)
             continue;
@@ -219,16 +221,28 @@ void __raft_log(raft_server_t* raft, raft_node_t* node, void *udata,
     if (node)
         printf("> %lx, %lx %s\n",
                (unsigned long)raft,
-               (unsigned long)sys->nodes[raft_node_get_id(node)].raft,
+               (unsigned long)sys->servers[raft_node_get_id(node)].raft,
                buf);
     else
         printf("> %lx               %s\n", (unsigned long)raft, buf);
 }
 
+static peer_connection_t* __server_add_node(server_t* sv, const int node_id)
+{
+    peer_connection_t* p = calloc(1, sizeof(*p));
+
+    p->next = sv->conns;
+    sv->conns = p;
+
+    int is_myself = sv->node_id == node_id;
+    p->node = raft_add_node(sv->raft, p, node_id, is_myself);
+    return p;
+}
+
 // TODO
 /** Raft callback for appending an item to the log */
 static int __raft_logentry_offer(
-    raft_server_t* raft,
+    raft_server_t* r,
     void *udata,
     raft_entry_t *ety,
     int ety_idx
@@ -279,23 +293,24 @@ static int __append_msg(
     if (random() % 100 < atoi(opts.drop_rate))
         return 0;
 
-    node_t* n = &sys->nodes[node_id];
+    server_t* sv = &sys->servers[node_id];
 
-    if (n->partitioned)
+    if (sv->partitioned)
         return 0;
 
+    /* put inside peer's inbox */
     do
     {
-        msg_t* m = malloc(sizeof(msg_t));
+        msg_t* m = calloc(1, sizeof(msg_t));
         m->type = type;
         m->len = len;
-        m->sender = raft_get_node(n->raft, raft_get_nodeid(raft));
+        m->sender = raft_get_node(sv->raft, raft_get_nodeid(raft));
         m->data = malloc(len);
         memcpy(m->data, data, len);
 
         /* give to peer */
         /* peer_connection_t* peer = raft_node_get_udata(node); */
-        llqueue_offer(n->inbox, m);
+        llqueue_offer(sv->inbox, m);
     }
     while (random() % 100 < atoi(opts.dupe_rate));
 
@@ -357,29 +372,20 @@ raft_cbs_t raft_funcs = {
     .log                         = __raft_log,
 };
 
-static void __create_node(node_t* sv, int id, system_t* sys)
+static void __create_node(server_t* sv, int id, system_t* sys)
 {
     sv->raft = raft_new();
     raft_set_callbacks(sv->raft, &raft_funcs, sys);
     raft_set_election_timeout(sv->raft, 500);
     sv->inbox = llqueue_new();
+    sv->node_id = id;
 
     int i;
-
-    for (i = 0; i < atoi(opts.NODES); i++)
-    {
-        peer_connection_t* p = calloc(1, sizeof(*p));
-
-        p->next = sv->conns;
-        sv->conns = p;
-
-        int is_myself = id == i;
-
-        p->node = raft_add_node(sv->raft, p, i, is_myself);
-    }
+    for (i = 0; i < sys->n_servers; i++)
+        __server_add_node(sv, i);
 }
 
-static void __server_poll_messages(node_t* me, system_t* sys)
+static void __server_poll_messages(server_t* me, system_t* sys)
 {
     msg_t* m;
 
@@ -416,7 +422,7 @@ static void __server_poll_messages(node_t* me, system_t* sys)
     }
 }
 
-static void __server_drop_messages(node_t* me, system_t* sys)
+static void __server_drop_messages(server_t* me, system_t* sys)
 {
     msg_t* m;
 
@@ -434,17 +440,17 @@ static void __ensure_election_safety(system_t* sys)
 {
     int i;
 
-    for (i = 0; i < sys->n_nodes; i++)
+    for (i = 0; i < sys->n_servers; i++)
     {
-        raft_server_t* r = sys->nodes[i].raft;
+        raft_server_t* r = sys->servers[i].raft;
 
         if (!raft_is_leader(r))
             continue;
 
         int j;
-        for (j = i + 1; j < sys->n_nodes; j++)
+        for (j = i + 1; j < sys->n_servers; j++)
         {
-            raft_server_t* r2 = sys->nodes[j].raft;
+            raft_server_t* r2 = sys->servers[j].raft;
             if (raft_is_leader(r2) &&
                 raft_get_current_term(r) == raft_get_current_term(r2))
             {
@@ -478,9 +484,9 @@ static void __push_entry(system_t* sys)
 {
     int i;
 
-    for (i = 0; i < sys->n_nodes; i++)
+    for (i = 0; i < sys->n_servers; i++)
     {
-        raft_server_t* r = sys->nodes[i].raft;
+        raft_server_t* r = sys->servers[i].raft;
         if (raft_is_leader(r))
         {
             /* printf("adding %lx\n", (unsigned long)r); */
@@ -495,6 +501,14 @@ static void __push_entry(system_t* sys)
     }
 }
 
+static int __voting_servers(system_t* sys)
+{
+    int i, servers = 0;
+    for (i = 0; i < sys->n_servers; i++)
+        servers += 1;
+    return servers;
+}
+
 // FIXME: this is O(n^2)
 /** Leader Completeness
  * If a log entry is committed in a given term, then that entry will be present
@@ -503,14 +517,14 @@ static void __ensure_leader_completeness(system_t* sys)
 {
     int i;
 
-    for (i = 0; i < sys->n_nodes; i++)
+    for (i = 0; i < sys->n_servers; i++)
     {
-        raft_server_t* r = sys->nodes[i].raft;
+        raft_server_t* r = sys->servers[i].raft;
 
         int j;
         int comi = raft_get_commit_idx(r);
 
-        /* we need to confirm that at least half of the nodes have this */
+        /* we need to confirm that at least half of the servers have this */
         int have = 1;
 
         if (comi == 0)
@@ -518,14 +532,14 @@ static void __ensure_leader_completeness(system_t* sys)
 
         raft_entry_t* ety = raft_get_entry_from_idx(r, comi);
 
-        for (j=0; j < sys->n_nodes; j++)
+        for (j=0; j < sys->n_servers; j++)
         {
-            raft_server_t* r2 = sys->nodes[j].raft;
+            raft_server_t* r2 = sys->servers[j].raft;
 
             if (r == r2)
                 continue;
 
-            /* all the other nodes should not conflict with this */
+            /* all the other servers should not conflict with this */
 
             raft_entry_t* oety = raft_get_entry_from_idx(r2, comi);
 
@@ -539,7 +553,7 @@ static void __ensure_leader_completeness(system_t* sys)
         }
 
         /* a majority don't have it */
-        if (!(sys->n_nodes / 2 < have))
+        if (!(__voting_servers(sys) / 2 <= have))
         {
             printf("leaders completeness failed: %lx commit_idx: %d t: %d id: %d\n",
                    (unsigned long)r,
@@ -553,32 +567,37 @@ static void __ensure_leader_completeness(system_t* sys)
     }
 }
 
-static void __periodic(system_t* sys)
+static void __poll_messages(system_t* sys)
 {
     int i;
+    for (i=0; i<sys->n_servers; i++)
+        __server_poll_messages(&sys->servers[i], sys);
+}
 
+static void __periodic(system_t* sys)
+{
     if (opts.debug)
         printf("\n");
 
     if (random() % 100 < sys->client_rate)
         __push_entry(sys);
 
-    for (i = 0; i < sys->n_nodes; i++)
-    {
-        __server_poll_messages(&sys->nodes[i], sys);
+    __poll_messages(sys);
+
+    int i;
+    for (i = 0; i < sys->n_servers; i++)
         if (!opts.no_random_period)
-            raft_periodic(sys->nodes[i].raft, random() % 200);
-    }
+            raft_periodic(sys->servers[i].raft, random() % 200);
 
     __ensure_election_safety(sys);
     __ensure_log_matching(sys);
     __ensure_leader_completeness(sys);
 
     /* collect stats */
-    if (sys->leader != raft_get_current_leader_node(sys->nodes[0].raft))
+    if (sys->leader != raft_get_current_leader_node(sys->servers[0].raft))
         sys->leadership_changes += 1;
 
-    sys->leader = raft_get_current_leader_node(sys->nodes[0].raft);
+    sys->leader = raft_get_current_leader_node(sys->servers[0].raft);
 }
 
 #include "command_parser.c"
@@ -609,12 +628,12 @@ int main(int argc, char **argv)
 
     srand(atoi(opts.seed));
 
-    sys.n_nodes = atoi(opts.NODES);
-    sys.nodes = calloc(sys.n_nodes, sizeof(*sys.nodes));
+    sys.n_servers = atoi(opts.servers);
+    sys.servers = calloc(sys.n_servers, sizeof(*sys.servers));
 
     /* create server for every node */
-    for (i = 0; i < sys.n_nodes; i++)
-        __create_node(&sys.nodes[i], i, &sys);
+    for (i = 0; i < sys.n_servers; i++)
+        __create_node(&sys.servers[i], i, &sys);
 
     sys.client_rate = atoi(opts.client_rate);
 
@@ -626,10 +645,10 @@ int main(int argc, char **argv)
     {
         printf("%d ", sys.max_entries_in_ae);
         printf("%d | ", sys.leadership_changes);
-        for (i=0; i<sys.n_nodes; i++)
+        for (i=0; i<sys.n_servers; i++)
         {
-            printf("%d ", raft_get_current_idx(sys.nodes[i].raft));
-            printf("%d, ", raft_get_current_term(sys.nodes[i].raft));
+            printf("%d ", raft_get_current_idx(sys.servers[i].raft));
+            printf("%d, ", raft_get_current_term(sys.servers[i].raft));
         }
         return 0;
     }
