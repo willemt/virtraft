@@ -1,7 +1,7 @@
 virtraft - test raft
 
 Usage:
-  virtraft --servers SERVERS [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | -p | --tsv | --debug]
+  virtraft --servers SERVERS [-d RATE | -D RATE | -c RATE | -s SEED | -i ITERS | -p | --tsv | -q | --debug]
   virtraft --version
   virtraft --help
 
@@ -12,6 +12,7 @@ Options:
   -c --client_rate RATE   Rate entries are received from the client 0-100 [default: 100]
   -p --no_random_period   Don't use a random period
   -s --seed SEED          The simulation's seed [default: 0]
+  -q --quiet              No output at end of run
   -i --iterations ITERS   Number of iterations before the simulation ends [default: -1]
   --tsv                   Output node status tab separated values at exit
   -g --debug              Show debug logs

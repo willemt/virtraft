@@ -659,7 +659,7 @@ int main(int argc, char **argv)
 
     if (opts.tsv)
         __print_tsv();
-    else
+    else if (!opts.quiet)
     {
         __print_stats();
         printf("Maximum appendentries size: %d\n", sys.max_entries_in_ae);
