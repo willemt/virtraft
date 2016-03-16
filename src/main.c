@@ -35,7 +35,9 @@ typedef struct
     int type;
     int len;
     void* data;
-    raft_node_t* sender;
+
+    /* node ID of sender */
+    int sender;
 } msg_t;
 
 typedef struct peer_connection_s peer_connection_t;
@@ -56,8 +58,10 @@ typedef struct
     /* Link list of peer connections */
     peer_connection_t* conns;
 
+    /* messages we want to receive */
     void* inbox;
 
+    /* whether or not this node can communicate with other servers */
     int partitioned;
 } server_t;
 
@@ -278,17 +282,20 @@ static int __raft_logentry_pop(
     return 0;
 }
 
+/**
+ * @param sys The udata of the raft server sending this
+ * @param node_id The sending raft server's node it is sending to
+ * @param raft The raft server sending this
+ */
 static int __append_msg(
     system_t* sys,
     void* data,
     int type,
     int len,
-    raft_node_t* node,
+    int node_id,
     raft_server_t* raft
     )
 {
-    int node_id = raft_node_get_id(node);
-
     /* drop rate */
     if (random() % 100 < atoi(opts.drop_rate))
         return 0;
@@ -304,12 +311,9 @@ static int __append_msg(
         msg_t* m = calloc(1, sizeof(msg_t));
         m->type = type;
         m->len = len;
-        m->sender = raft_get_node(sv->raft, raft_get_nodeid(raft));
+        m->sender = raft_get_nodeid(raft);
         m->data = malloc(len);
         memcpy(m->data, data, len);
-
-        /* give to peer */
-        /* peer_connection_t* peer = raft_node_get_udata(node); */
         llqueue_offer(sv->inbox, m);
     }
     while (random() % 100 < atoi(opts.dupe_rate));
@@ -322,7 +326,7 @@ int __raft_send_requestvote(raft_server_t* raft,
                             raft_node_t* node,
                             msg_requestvote_t* msg)
 {
-    return __append_msg(udata, msg, MSG_REQUESTVOTE, sizeof(*msg), node, raft);
+    return __append_msg(udata, msg, MSG_REQUESTVOTE, sizeof(*msg), raft_node_get_id(node), raft);
 }
 
 int sender_requestvote_response(raft_server_t* raft,
@@ -330,8 +334,7 @@ int sender_requestvote_response(raft_server_t* raft,
                                 raft_node_t* node,
                                 msg_requestvote_response_t* msg)
 {
-    return __append_msg(udata, msg, MSG_REQUESTVOTE_RESPONSE, sizeof(*msg),
-                        node, raft);
+    return __append_msg(udata, msg, MSG_REQUESTVOTE_RESPONSE, sizeof(*msg), raft_node_get_id(node), raft);
 }
 
 int __raft_send_appendentries(raft_server_t* raft,
@@ -347,8 +350,7 @@ int __raft_send_appendentries(raft_server_t* raft,
     if (sys.max_entries_in_ae < msg->n_entries)
         sys.max_entries_in_ae = msg->n_entries;
 
-    return __append_msg(udata, msg, MSG_APPENDENTRIES, sizeof(*msg), node,
-                        raft);
+    return __append_msg(udata, msg, MSG_APPENDENTRIES, sizeof(*msg), raft_node_get_id(node), raft);
 }
 
 int sender_appendentries_response(raft_server_t* raft,
@@ -356,8 +358,7 @@ int sender_appendentries_response(raft_server_t* raft,
                                   raft_node_t* node,
                                   msg_appendentries_response_t* msg)
 {
-    return __append_msg(udata, msg, MSG_APPENDENTRIES_RESPONSE,
-                        sizeof(*msg), node, raft);
+    return __append_msg(udata, msg, MSG_APPENDENTRIES_RESPONSE, sizeof(*msg), raft_node_get_id(node), raft);
 }
 
 raft_cbs_t raft_funcs = {
@@ -394,29 +395,38 @@ static void __server_poll_messages(server_t* me, system_t* sys)
 
     while ((m = llqueue_poll(me->inbox)))
     {
+        raft_node_t* n = raft_get_node(me->raft, m->sender);
         switch (m->type)
         {
         case MSG_APPENDENTRIES:
         {
             msg_appendentries_response_t response;
-            raft_recv_appendentries(me->raft, m->sender, m->data, &response);
-            __append_msg(sys, &response, MSG_APPENDENTRIES_RESPONSE,
-                         sizeof(response), m->sender, me->raft);
+            raft_recv_appendentries(me->raft, n, m->data, &response);
+            __append_msg(sys,
+                &response,
+                MSG_APPENDENTRIES_RESPONSE,
+                sizeof(response),
+                m->sender,
+                me->raft);
         }
         break;
         case MSG_APPENDENTRIES_RESPONSE:
-            raft_recv_appendentries_response(me->raft, m->sender, m->data);
+            raft_recv_appendentries_response(me->raft, n, m->data);
             break;
         case MSG_REQUESTVOTE:
         {
             msg_requestvote_response_t response;
-            raft_recv_requestvote(me->raft, m->sender, m->data, &response);
-            __append_msg(sys, &response, MSG_REQUESTVOTE_RESPONSE,
-                         sizeof(response), m->sender, me->raft);
+            raft_recv_requestvote(me->raft, n, m->data, &response);
+            __append_msg(sys,
+                &response,
+                MSG_REQUESTVOTE_RESPONSE,
+                sizeof(response),
+                m->sender,
+                me->raft);
         }
         break;
         case MSG_REQUESTVOTE_RESPONSE:
-            raft_recv_requestvote_response(me->raft, m->sender, m->data);
+            raft_recv_requestvote_response(me->raft, n, m->data);
             break;
         }
     }
@@ -650,12 +660,13 @@ int main(int argc, char **argv)
             printf("%d ", raft_get_current_idx(sys.servers[i].raft));
             printf("%d, ", raft_get_current_term(sys.servers[i].raft));
         }
-        return 0;
     }
-
-    int iters, max_iters = atoi(opts.iterations);
-    for (iters = 0; iters < max_iters || max_iters == -1; iters++)
-        __periodic(&sys);
+    else
+    {
+        int iters, max_iters = atoi(opts.iterations);
+        for (iters = 0; iters < max_iters || max_iters == -1; iters++)
+            __periodic(&sys);
+    }
 
     if (opts.tsv)
         __print_tsv();
