@@ -63,6 +63,8 @@ typedef struct
 
     /* whether or not this node can communicate with other servers */
     int partitioned;
+
+    int connected;
 } server_t;
 
 typedef struct
@@ -98,6 +100,7 @@ static void __print_tsv()
     printf("commit_idx\t");
     printf("last_applied_idx\t");
     printf("log_count\t");
+    printf("connected\t");
     printf("\n");
 
     for (i = 0; i < sys.n_servers; i++)
@@ -116,6 +119,7 @@ static void __print_tsv()
         printf("%d\t", raft_get_commit_idx(r));
         printf("%d\t", raft_get_last_applied_idx(r));
         printf("%d\t", raft_get_log_count(r));
+        printf("%d\t", sv->connected);
         printf("\n");
     }
 }
@@ -126,6 +130,7 @@ static void __print_stats()
 
     for (i = 0; i < sys.n_servers; i++)
     {
+        server_t* sv = &sys.servers[i];
         raft_server_t* r = sys.servers[i].raft;
 
         printf("node %d:%lx\n", i, (unsigned long)r);
@@ -139,6 +144,7 @@ static void __print_stats()
         printf("commit_idx %d\n", raft_get_commit_idx(r));
         printf("last_applied_idx %d\n", raft_get_last_applied_idx(r));
         printf("log_count %d\n", raft_get_log_count(r));
+        printf("connected %d\n", sv->connected);
         printf("\n");
     }
 }
@@ -379,6 +385,7 @@ static void __create_node(server_t* sv, int id, system_t* sys)
     raft_set_callbacks(sv->raft, &raft_funcs, sys);
     raft_set_election_timeout(sv->raft, 500);
     sv->inbox = llqueue_new();
+    sv->connected = 1;
     sv->node_id = id;
 
     int i;
@@ -392,6 +399,8 @@ static void __server_poll_messages(server_t* me, system_t* sys)
 
     /* if (random() < 0.5) */
     /*     return; */
+
+    assert(me->connected);
 
     while ((m = llqueue_poll(me->inbox)))
     {
@@ -515,7 +524,8 @@ static int __voting_servers(system_t* sys)
 {
     int i, servers = 0;
     for (i = 0; i < sys->n_servers; i++)
-        servers += 1;
+        if (sys->servers[i].connected)
+            servers += 1;
     return servers;
 }
 
@@ -531,6 +541,9 @@ static void __ensure_leader_completeness(system_t* sys)
     {
         raft_server_t* r = sys->servers[i].raft;
 
+        if (!sys->servers[i].connected)
+            continue;
+
         int j;
         int comi = raft_get_commit_idx(r);
 
@@ -545,6 +558,9 @@ static void __ensure_leader_completeness(system_t* sys)
         for (j=0; j < sys->n_servers; j++)
         {
             raft_server_t* r2 = sys->servers[j].raft;
+
+            if (!sys->servers[j].connected)
+                continue;
 
             if (r == r2)
                 continue;
@@ -581,7 +597,8 @@ static void __poll_messages(system_t* sys)
 {
     int i;
     for (i=0; i<sys->n_servers; i++)
-        __server_poll_messages(&sys->servers[i], sys);
+        if (sys->servers[i].connected)
+            __server_poll_messages(&sys->servers[i], sys);
 }
 
 static void __periodic(system_t* sys)
@@ -597,7 +614,8 @@ static void __periodic(system_t* sys)
     int i;
     for (i = 0; i < sys->n_servers; i++)
         if (!opts.no_random_period)
-            raft_periodic(sys->servers[i].raft, random() % 200);
+            if (sys->servers[i].connected)
+                raft_periodic(sys->servers[i].raft, random() % 200);
 
     __ensure_election_safety(sys);
     __ensure_log_matching(sys);
