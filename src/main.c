@@ -67,6 +67,10 @@ typedef struct
     int connected;
 } server_t;
 
+typedef struct {
+    int node_id;
+} entry_cfg_change_t;
+
 typedef struct
 {
     server_t* servers;
@@ -249,7 +253,6 @@ static peer_connection_t* __server_add_node(server_t* sv, const int node_id)
     return p;
 }
 
-// TODO
 /** Raft callback for appending an item to the log */
 static int __raft_logentry_offer(
     raft_server_t* r,
@@ -258,6 +261,41 @@ static int __raft_logentry_offer(
     int ety_idx
     )
 {
+    if (!raft_entry_is_cfg_change(ety))
+        return 0;
+
+    system_t* sys = udata;
+
+    entry_cfg_change_t *chg = (void*)ety->data.buf;
+
+    int is_self = chg->node_id == raft_get_nodeid(r);
+
+    server_t* peer_sv = &sys->servers[chg->node_id];
+
+    switch (ety->type)
+    {
+        case RAFT_LOGTYPE_REMOVE_NODE:
+            if (!is_self && raft_get_node(r, chg->node_id))
+            {
+                assert(raft_get_node(r, chg->node_id));
+                raft_remove_node(r, raft_get_node(r, chg->node_id));
+            }
+            return RAFT_ERR_SHUTDOWN;
+        case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
+            {
+            peer_sv->connected = 1;
+            peer_connection_t* conn = __server_add_node(peer_sv, chg->node_id);
+            conn->node = raft_add_non_voting_node(r, conn, chg->node_id, is_self);
+            /* raft_node_set_udata(conn->node, conn); */
+            }
+            break;
+        case RAFT_LOGTYPE_ADD_NODE:
+            raft_add_node(r, NULL, chg->node_id, is_self);
+            break;
+        default:
+            assert(0);
+    }
+
     return 0;
 }
 
@@ -410,13 +448,20 @@ static void __server_poll_messages(server_t* me, system_t* sys)
         case MSG_APPENDENTRIES:
         {
             msg_appendentries_response_t response;
-            raft_recv_appendentries(me->raft, n, m->data, &response);
+            int e = raft_recv_appendentries(me->raft, n, m->data, &response);
             __append_msg(sys,
                 &response,
                 MSG_APPENDENTRIES_RESPONSE,
                 sizeof(response),
                 m->sender,
                 me->raft);
+            if (RAFT_ERR_SHUTDOWN == e)
+            {
+                raft_clear(me->raft);
+                me->connected = 0;
+                while ((m = llqueue_poll(me->inbox)));
+                return;
+            }
         }
         break;
         case MSG_APPENDENTRIES_RESPONSE:
@@ -628,6 +673,16 @@ static void __periodic(system_t* sys)
     sys->leader = raft_get_current_leader_node(sys->servers[0].raft);
 }
 
+static server_t* __get_leader(system_t* sys)
+{
+    int i;
+    for (i=0; i<sys->n_servers; i++)
+        if (sys->servers[i].connected)
+            if (raft_is_leader(sys->servers[i].raft))
+                return &sys->servers[i];
+    return NULL;
+}
+
 #include "command_parser.c"
 
 int main(int argc, char **argv)
@@ -671,13 +726,13 @@ int main(int argc, char **argv)
     parse_result_t result;
     if (1 == parse_commands(&sys, &result))
     {
-        printf("%d ", sys.max_entries_in_ae);
-        printf("%d | ", sys.leadership_changes);
-        for (i=0; i<sys.n_servers; i++)
-        {
-            printf("%d ", raft_get_current_idx(sys.servers[i].raft));
-            printf("%d, ", raft_get_current_term(sys.servers[i].raft));
-        }
+        /* printf("%d ", sys.max_entries_in_ae); */
+        /* printf("%d | ", sys.leadership_changes); */
+        /* for (i=0; i<sys.n_servers; i++) */
+        /* { */
+        /*     printf("%d ", raft_get_current_idx(sys.servers[i].raft)); */
+        /*     printf("%d, ", raft_get_current_term(sys.servers[i].raft)); */
+        /* } */
     }
     else
     {

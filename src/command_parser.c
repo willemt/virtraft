@@ -17,54 +17,61 @@ struct path_parse
 };
 
 
-#line 62 "src/command_parser.rl"
+#line 95 "src/command_parser.rl"
 
 
 
 #line 25 "src/command_parser.c"
 static const char _path_parse_actions[] = {
 	0, 1, 0, 1, 1, 1, 2, 1, 
-	3, 1, 4
+	3, 1, 4, 1, 5
 };
 
 static const char _path_parse_key_offsets[] = {
 	0, 0, 1, 2, 3, 5, 6, 7, 
 	8, 9, 11, 12, 13, 15, 16, 17, 
-	18, 20, 21, 22, 23, 25
+	18, 20, 21, 22, 23, 25, 26, 27, 
+	28, 29, 30, 31, 32, 34
 };
 
 static const char _path_parse_trans_keys[] = {
 	114, 111, 112, 48, 57, 110, 116, 114, 
 	121, 97, 101, 114, 116, 48, 57, 114, 
 	105, 100, 48, 57, 101, 99, 118, 48, 
-	57, 100, 101, 112, 114, 0
+	57, 111, 103, 103, 108, 109, 101, 109, 
+	48, 57, 100, 101, 112, 114, 116, 0
 };
 
 static const char _path_parse_single_lengths[] = {
 	0, 1, 1, 1, 0, 1, 1, 1, 
 	1, 2, 1, 1, 0, 1, 1, 1, 
-	0, 1, 1, 1, 0, 4
+	0, 1, 1, 1, 0, 1, 1, 1, 
+	1, 1, 1, 1, 0, 5
 };
 
 static const char _path_parse_range_lengths[] = {
 	0, 0, 0, 0, 1, 0, 0, 0, 
 	0, 0, 0, 0, 1, 0, 0, 0, 
-	1, 0, 0, 0, 1, 0
+	1, 0, 0, 0, 1, 0, 0, 0, 
+	0, 0, 0, 0, 1, 0
 };
 
 static const char _path_parse_index_offsets[] = {
 	0, 0, 2, 4, 6, 8, 10, 12, 
 	14, 16, 19, 21, 23, 25, 27, 29, 
-	31, 33, 35, 37, 39, 41
+	31, 33, 35, 37, 39, 41, 43, 45, 
+	47, 49, 51, 53, 55, 57
 };
 
 static const char _path_parse_trans_targs[] = {
-	2, 0, 3, 0, 4, 0, 21, 0, 
-	6, 0, 7, 0, 8, 0, 21, 0, 
-	10, 13, 0, 11, 0, 12, 0, 21, 
-	0, 14, 0, 15, 0, 16, 0, 21, 
-	0, 18, 0, 19, 0, 20, 0, 21, 
-	0, 1, 5, 9, 17, 0, 0
+	2, 0, 3, 0, 4, 0, 29, 0, 
+	6, 0, 7, 0, 8, 0, 29, 0, 
+	10, 13, 0, 11, 0, 12, 0, 29, 
+	0, 14, 0, 15, 0, 16, 0, 29, 
+	0, 18, 0, 19, 0, 20, 0, 29, 
+	0, 22, 0, 23, 0, 24, 0, 25, 
+	0, 26, 0, 27, 0, 28, 0, 29, 
+	0, 1, 5, 9, 17, 21, 0, 0
 };
 
 static const char _path_parse_trans_actions[] = {
@@ -73,17 +80,19 @@ static const char _path_parse_trans_actions[] = {
 	0, 0, 0, 0, 0, 0, 0, 9, 
 	0, 0, 0, 0, 0, 0, 0, 3, 
 	0, 0, 0, 0, 0, 0, 0, 5, 
-	0, 0, 0, 0, 0, 0, 0
+	0, 0, 0, 0, 0, 0, 0, 0, 
+	0, 0, 0, 0, 0, 0, 0, 11, 
+	0, 0, 0, 0, 0, 0, 0, 0
 };
 
-static const int path_parse_start = 21;
-static const int path_parse_first_final = 21;
+static const int path_parse_start = 29;
+static const int path_parse_first_final = 29;
 static const int path_parse_error = 0;
 
-static const int path_parse_en_main = 21;
+static const int path_parse_en_main = 29;
 
 
-#line 65 "src/command_parser.rl"
+#line 98 "src/command_parser.rl"
 
 static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result)
 {
@@ -91,12 +100,12 @@ static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result
     fsm->r = result;
     fsm->node_id = 0;
     
-#line 95 "src/command_parser.c"
+#line 104 "src/command_parser.c"
 	{
 	 fsm->cs = path_parse_start;
 	}
 
-#line 72 "src/command_parser.rl"
+#line 105 "src/command_parser.rl"
 }
 
 static void __execute(struct path_parse *fsm, const char *data, size_t len)
@@ -105,7 +114,7 @@ static void __execute(struct path_parse *fsm, const char *data, size_t len)
     const char *pe = data + len;
     //const char *eof = data + len;
     
-#line 109 "src/command_parser.c"
+#line 118 "src/command_parser.c"
 	{
 	int _klen;
 	unsigned int _trans;
@@ -182,40 +191,74 @@ _match:
 #line 24 "src/command_parser.rl"
 	{
         __periodic(&sys);
+        __poll_messages(&sys);
     }
 	break;
 	case 1:
-#line 28 "src/command_parser.rl"
+#line 29 "src/command_parser.rl"
 	{
         raft_periodic(sys.servers[(*p) - '0'].raft, 500);
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
+        __poll_messages(&sys);
     }
 	break;
 	case 2:
-#line 35 "src/command_parser.rl"
+#line 37 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
         __server_poll_messages(&sys.servers[(*p) - '0'], &sys);
     }
 	break;
 	case 3:
-#line 40 "src/command_parser.rl"
+#line 42 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
         __server_drop_messages(&sys.servers[(*p) - '0'], &sys);
     }
 	break;
 	case 4:
-#line 45 "src/command_parser.rl"
+#line 47 "src/command_parser.rl"
 	{
         int node_id1 = *(p) - '0';
         server_t* sv = &sys.servers[node_id1];
         sv->partitioned = !sv->partitioned;
     }
 	break;
-#line 219 "src/command_parser.c"
+	case 5:
+#line 53 "src/command_parser.rl"
+	{
+        int node_id1 = *(p) - '0';
+        server_t* leader = __get_leader(&sys);
+        server_t* node = &sys.servers[node_id1];
+
+        entry_cfg_change_t *change = calloc(1, sizeof(*change));
+        change->node_id = node_id1;
+
+        if (!leader)
+            return;
+
+        msg_entry_t entry = {
+            // FIXME: Should be random
+            .id = 1,
+            .data.buf = (void*)change,
+            .data.len = sizeof(*change),
+            .type = node->connected ? RAFT_LOGTYPE_REMOVE_NODE :
+                                      RAFT_LOGTYPE_ADD_NONVOTING_NODE
+        };
+
+        assert(raft_entry_is_cfg_change(&entry));
+
+        assert(leader);
+
+        msg_entry_response_t r;
+        raft_recv_entry(leader->raft, &entry, &r);
+
+        __poll_messages(&sys);
+    }
+	break;
+#line 262 "src/command_parser.c"
 		}
 	}
 
@@ -228,7 +271,7 @@ _again:
 	_out: {}
 	}
 
-#line 80 "src/command_parser.rl"
+#line 113 "src/command_parser.rl"
 }
 
 static int __finish(struct path_parse *fsm)

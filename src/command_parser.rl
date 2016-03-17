@@ -23,6 +23,7 @@ struct path_parse
 
     action recv_entry {
         __periodic(&sys);
+        __poll_messages(&sys);
     }
 
     action periodic {
@@ -30,6 +31,7 @@ struct path_parse
         __ensure_election_safety(&sys);
         __ensure_log_matching(&sys);
         __ensure_leader_completeness(&sys);
+        __poll_messages(&sys);
     }
 
     action receive_msg_from_inbox {
@@ -48,6 +50,36 @@ struct path_parse
         sv->partitioned = !sv->partitioned;
     }
 
+    action togglmem {
+        int node_id1 = *(fpc) - '0';
+        server_t* leader = __get_leader(&sys);
+        server_t* node = &sys.servers[node_id1];
+
+        entry_cfg_change_t *change = calloc(1, sizeof(*change));
+        change->node_id = node_id1;
+
+        if (!leader)
+            return;
+
+        msg_entry_t entry = {
+            // FIXME: Should be random
+            .id = 1,
+            .data.buf = (void*)change,
+            .data.len = sizeof(*change),
+            .type = node->connected ? RAFT_LOGTYPE_REMOVE_NODE :
+                                      RAFT_LOGTYPE_ADD_NONVOTING_NODE
+        };
+
+        assert(raft_entry_is_cfg_change(&entry));
+
+        assert(leader);
+
+        msg_entry_response_t r;
+        raft_recv_entry(leader->raft, &entry, &r);
+
+        __poll_messages(&sys);
+    }
+
     unreserved  = alnum | "-" | "." | "_" | "~" | "=";
 
 
@@ -56,6 +88,7 @@ struct path_parse
         ("recv" digit @receive_msg_from_inbox) |
         ("drop" digit @drop_msg_from_inbox) |
         ("entry" @recv_entry) |
+        ("togglmem" digit @togglmem) |
         ("part" digit @partition)
         ) *;
 
