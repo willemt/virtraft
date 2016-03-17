@@ -5,11 +5,14 @@
  *
  * @file
  * @author Willem Thiart himself@willemthiart.com
- * @version 0.1
  */
 
 #ifndef RAFT_H_
 #define RAFT_H_
+
+#define RAFT_ERR_NOT_LEADER             -2
+#define RAFT_ERR_ONE_VOTING_CHANGE_ONLY -3
+#define RAFT_ERR_SHUTDOWN -4
 
 typedef enum {
     RAFT_STATE_NONE,
@@ -272,7 +275,9 @@ typedef struct
     /** Callback for sending appendentries messages */
     func_send_appendentries_f send_appendentries;
 
-    /** Callback for finite state machine application */
+    /** Callback for finite state machine application
+     * Return 0 on success.
+     * Return RAFT_ERR_SHUTDOWN if you want the server to shutdown. */
     func_applylog_f applylog;
 
     /** Callback for persisting vote data
@@ -284,7 +289,9 @@ typedef struct
     func_persist_int_f persist_term;
 
     /** Callback for adding an entry to the log
-     * For safety reasons this callback MUST flush the change to disk. */
+     * For safety reasons this callback MUST flush the change to disk.
+     * Return 0 on success.
+     * Return RAFT_ERR_SHUTDOWN if you want the server to shutdown. */
     func_logentry_event_f log_offer;
 
     /** Callback for removing the oldest entry from the log
@@ -327,6 +334,9 @@ raft_server_t* raft_new();
 /** De-initialise Raft server.
  * Frees all memory */
 void raft_free(raft_server_t* me);
+
+/** De-initialise Raft server. */
+void raft_clear(raft_server_t* me);
 
 /** Set callbacks and user data.
  *
@@ -450,7 +460,12 @@ int raft_recv_requestvote_response(raft_server_t* me,
  * @param[in] node Index of the node who sent us this message
  * @param[in] ety The entry message
  * @param[out] r The resulting response
- * @return 0 on success, -1 on failure */
+ * @return
+ *  0 on success;
+ *  RAFT_ERR_NOT_LEADER server is not the leader;
+ *  RAFT_ERR_SHUTDOWN server should be shutdown;
+ *  RAFT_ERR_ONE_VOTING_CHANGE_ONLY there is a non-voting change inflight;
+ */
 int raft_recv_entry(raft_server_t* me,
                     msg_entry_t* ety,
                     msg_entry_response_t *r);
@@ -591,7 +606,10 @@ void raft_set_commit_idx(raft_server_t* me, int commit_idx);
 
 /** Add an entry to the server's log.
  * This should be used to reload persistent state, ie. the commit log.
- * @param[in] ety The entry to be appended */
+ * @param[in] ety The entry to be appended
+ * @return
+ *  0 on success;
+ *  RAFT_ERR_SHUTDOWN server should shutdown */
 int raft_append_entry(raft_server_t* me, raft_entry_t* ety);
 
 /** Confirm if a msg_entry_response has been committed.
@@ -628,8 +646,11 @@ void raft_node_set_voting(raft_node_t* node, int voting);
  * @return 1 if this is a voting node. Otherwise 0. */
 int raft_node_is_voting(raft_node_t* me_);
 
-/** Apply all entries up to the commit index */
-void raft_apply_all(raft_server_t* me_);
+/** Apply all entries up to the commit index
+ * @return
+ *  0 on success;
+ *  RAFT_ERR_SHUTDOWN when server should be shutdown */
+int raft_apply_all(raft_server_t* me_);
 
 /** Become leader
  * WARNING: this is a dangerous function call. It could lead to your cluster

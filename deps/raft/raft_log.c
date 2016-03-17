@@ -6,7 +6,6 @@
  * @file
  * @brief ADT for managing Raft log entries (aka entries)
  * @author Willem Thiart himself@willemthiart.com
- * @version 0.1
  */
 
 #include <stdlib.h>
@@ -71,6 +70,8 @@ static void __ensurecapacity(log_private_t * me)
 log_t* log_new()
 {
     log_private_t* me = (log_private_t*)calloc(1, sizeof(log_private_t));
+    if (!me)
+        return NULL;
     me->size = INITIAL_CAPACITY;
     me->count = 0;
     me->back = in(me)->front = 0;
@@ -86,6 +87,15 @@ void log_set_callbacks(log_t* me_, raft_cbs_t* funcs, void* raft)
     me->cb = funcs;
 }
 
+void log_clear(log_t* me_)
+{
+    log_private_t* me = (log_private_t*)me_;
+    me->count = 0;
+    me->back = 0;
+    me->front = 0;
+    me->base = 0;
+}
+
 int log_append_entry(log_t* me_, raft_entry_t* c)
 {
     log_private_t* me = (log_private_t*)me_;
@@ -95,11 +105,12 @@ int log_append_entry(log_t* me_, raft_entry_t* c)
 
     __ensurecapacity(me);
 
-    if (me->cb && me->cb->log_offer)
-        me->cb->log_offer(me->raft, raft_get_udata(me->raft), c, me->back);
     memcpy(&me->entries[me->back], c, sizeof(raft_entry_t));
     me->count++;
     me->back++;
+
+    if (me->cb && me->cb->log_offer)
+        return me->cb->log_offer(me->raft, raft_get_udata(me->raft), c, me->back - 1);
     return 0;
 }
 
