@@ -52,30 +52,9 @@ struct path_parse
 
     action togglmem {
         int node_id1 = *(fpc) - '0';
-        server_t* leader = __get_leader(&sys);
         server_t* node = &sys.servers[node_id1];
 
-        entry_cfg_change_t *change = calloc(1, sizeof(*change));
-        change->node_id = node_id1;
-
-        if (!leader)
-            return;
-
-        msg_entry_t entry = {
-            // FIXME: Should be random
-            .id = 1,
-            .data.buf = (void*)change,
-            .data.len = sizeof(*change),
-            .type = node->connected ? RAFT_LOGTYPE_REMOVE_NODE :
-                                      RAFT_LOGTYPE_ADD_NONVOTING_NODE
-        };
-
-        assert(raft_entry_is_cfg_change(&entry));
-
-        assert(leader);
-
-        msg_entry_response_t r;
-        raft_recv_entry(leader->raft, &entry, &r);
+        __toggle_membership(node);
 
         __poll_messages(&sys);
     }

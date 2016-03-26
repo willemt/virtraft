@@ -65,6 +65,8 @@ typedef struct
     int partitioned;
 
     int connected;
+
+    int total_offer_count;
 } server_t;
 
 typedef struct {
@@ -86,6 +88,8 @@ typedef struct
     int leadership_changes;
 
     int client_rate;
+
+    int membership_rate;
 } system_t;
 
 system_t sys;
@@ -104,7 +108,8 @@ static void __print_tsv()
     printf("commit_idx\t");
     printf("last_applied_idx\t");
     printf("log_count\t");
-    printf("connected\t");
+    /* printf("connected\t"); */
+    /* printf("total_offer_count\t"); */
     printf("\n");
 
     for (i = 0; i < sys.n_servers; i++)
@@ -123,7 +128,8 @@ static void __print_tsv()
         printf("%d\t", raft_get_commit_idx(r));
         printf("%d\t", raft_get_last_applied_idx(r));
         printf("%d\t", raft_get_log_count(r));
-        printf("%d\t", sv->connected);
+        /* printf("%d\t", sv->connected); */
+        /* printf("%d\t", sv->total_offer_count); */
         printf("\n");
     }
 }
@@ -261,10 +267,13 @@ static int __raft_logentry_offer(
     int ety_idx
     )
 {
+    system_t* sys = udata;
+    server_t* node = &sys->servers[raft_get_nodeid(r)];
+
+    node->total_offer_count += 1;
+
     if (!raft_entry_is_cfg_change(ety))
         return 0;
-
-    system_t* sys = udata;
 
     entry_cfg_change_t *chg = (void*)ety->data.buf;
 
@@ -280,7 +289,8 @@ static int __raft_logentry_offer(
                 assert(raft_get_node(r, chg->node_id));
                 raft_remove_node(r, raft_get_node(r, chg->node_id));
             }
-            return RAFT_ERR_SHUTDOWN;
+            if (is_self)
+                return RAFT_ERR_SHUTDOWN;
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             {
             peer_sv->connected = 1;
@@ -646,6 +656,42 @@ static void __poll_messages(system_t* sys)
             __server_poll_messages(&sys->servers[i], sys);
 }
 
+static server_t* __get_leader(system_t* sys)
+{
+    int i;
+    for (i=0; i<sys->n_servers; i++)
+        if (sys->servers[i].connected)
+            if (raft_is_leader(sys->servers[i].raft))
+                return &sys->servers[i];
+    return NULL;
+}
+
+static void __toggle_membership(server_t* node)
+{
+    server_t* leader = __get_leader(&sys);
+    entry_cfg_change_t *change = calloc(1, sizeof(*change));
+    change->node_id = node->node_id;
+
+    if (!leader)
+        return;
+
+    msg_entry_t entry = {
+        // FIXME: Should be random
+        .id = 1,
+        .data.buf = (void*)change,
+        .data.len = sizeof(*change),
+        .type = node->connected ? RAFT_LOGTYPE_REMOVE_NODE :
+                                  RAFT_LOGTYPE_ADD_NONVOTING_NODE
+    };
+
+    assert(raft_entry_is_cfg_change(&entry));
+
+    assert(leader);
+
+    msg_entry_response_t r;
+    raft_recv_entry(leader->raft, &entry, &r);
+}
+
 static void __periodic(system_t* sys)
 {
     if (opts.debug)
@@ -658,9 +704,14 @@ static void __periodic(system_t* sys)
 
     int i;
     for (i = 0; i < sys->n_servers; i++)
+    {
+        if (random() % 100 < sys->membership_rate)
+            __toggle_membership(&sys->servers[i]);
+
         if (!opts.no_random_period)
             if (sys->servers[i].connected)
                 raft_periodic(sys->servers[i].raft, random() % 200);
+    }
 
     __ensure_election_safety(sys);
     __ensure_log_matching(sys);
@@ -671,16 +722,6 @@ static void __periodic(system_t* sys)
         sys->leadership_changes += 1;
 
     sys->leader = raft_get_current_leader_node(sys->servers[0].raft);
-}
-
-static server_t* __get_leader(system_t* sys)
-{
-    int i;
-    for (i=0; i<sys->n_servers; i++)
-        if (sys->servers[i].connected)
-            if (raft_is_leader(sys->servers[i].raft))
-                return &sys->servers[i];
-    return NULL;
 }
 
 #include "command_parser.c"
@@ -719,6 +760,7 @@ int main(int argc, char **argv)
         __create_node(&sys.servers[i], i, &sys);
 
     sys.client_rate = atoi(opts.client_rate);
+    sys.membership_rate = atoi(opts.member_rate);
 
     /* We're being fed commands via stdin.
      * This is the fuzzer's entry point */
