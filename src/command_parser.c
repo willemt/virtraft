@@ -291,7 +291,12 @@ int parse_commands(system_t *sys, parse_result_t *result)
 
     char buf[1];
 
-    while (0 < read(0, buf, 1))
+    int fd = fcntl(0, F_DUPFD, 0);
+
+    /* set to non-blocking so we can exit when there isn't anything on stdin */
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+
+    while (0 < read(fd, buf, 1))
     {
         // printf("reading: %c\n", *buf);
         ran = 1;
@@ -301,6 +306,9 @@ int parse_commands(system_t *sys, parse_result_t *result)
     }
 
     __finish(&pp);
+
+    /* we have to set to blocking to allow writing to sdout to work */
+    fcntl(fd, F_SETFL, 0);
 
     return ran;
 }

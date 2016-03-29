@@ -722,7 +722,6 @@ int main(int argc, char **argv)
 
     /* We're being fed commands via stdin.
      * This is the fuzzer's entry point */
-    fcntl(0, F_SETFL, O_NONBLOCK);
     parse_result_t result;
     if (1 == parse_commands(&sys, &result))
     {
