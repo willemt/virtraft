@@ -311,13 +311,12 @@ static int __raft_logentry_offer(
     raft_node_t* node = raft_get_node(r, chg->node_id);
     int is_self = chg->node_id == raft_get_nodeid(r);
 
-    assert(node);
-
     switch (ety->type)
     {
         case RAFT_LOGTYPE_REMOVE_NODE:
             /* printf("removing %d from %d\n", chg->node_id, raft_get_nodeid(r)); */
-            raft_node_set_voting(node, 0);
+            if (node)
+                raft_node_set_voting(node, 0);
             break;
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             {
@@ -523,6 +522,17 @@ static void __create_node(server_t* sv, int id, system_t* sys)
     }
 }
 
+static void __shutdown_server(server_t* me)
+{
+    /* printf("shutting down: %d\n", raft_get_nodeid(me->raft)); */
+    raft_clear(me->raft);
+    me->connected = 0;
+
+    while (llqueue_poll(me->inbox));
+
+    return;
+}
+
 static void __server_poll_messages(server_t* me, system_t* sys)
 {
     msg_t* m;
@@ -549,15 +559,7 @@ static void __server_poll_messages(server_t* me, system_t* sys)
                 me->raft);
 
             if (RAFT_ERR_SHUTDOWN == e)
-            {
-                /* printf("shutting down: %d\n", raft_get_nodeid(me->raft)); */
-                raft_clear(me->raft);
-                me->connected = 0;
-
-                while ((m = llqueue_poll(me->inbox)));
-
-                return;
-            }
+                __shutdown_server(me);
         }
         break;
         case MSG_APPENDENTRIES_RESPONSE:
@@ -796,10 +798,15 @@ static void __periodic(system_t* sys)
         if (!opts.no_random_period)
             if (sys->servers[i].connected)
             {
-                raft_periodic(sys->servers[i].raft, random() % 200);
+                int e = raft_periodic(sys->servers[i].raft, random() % 200);
+                if (RAFT_ERR_SHUTDOWN == e)
+                    __shutdown_server(&sys->servers[i]);
+                /* else */
+                /* { */
                 /* printf("node %d peers %d\n", */
                 /*     raft_get_nodeid(sys->servers[i].raft), */
                 /*     raft_get_num_nodes(sys->servers[i].raft)); */
+                /* } */
             }
     }
 
