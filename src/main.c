@@ -44,7 +44,6 @@ typedef struct peer_connection_s peer_connection_t;
 
 struct peer_connection_s
 {
-    raft_node_t* node;
     peer_connection_t* next;
 };
 
@@ -56,7 +55,7 @@ typedef struct
     raft_server_t* raft;
 
     /* Link list of peer connections */
-    peer_connection_t* conns;
+    /* peer_connection_t* conns; */
 
     /* messages we want to receive */
     void* inbox;
@@ -108,8 +107,9 @@ static void __print_tsv()
     printf("commit_idx\t");
     printf("last_applied_idx\t");
     printf("log_count\t");
-    /* printf("connected\t"); */
-    /* printf("total_offer_count\t"); */
+    printf("connected\t");
+    printf("peers\t");
+    printf("total_offer_count\t");
     printf("\n");
 
     for (i = 0; i < sys.n_servers; i++)
@@ -128,8 +128,9 @@ static void __print_tsv()
         printf("%d\t", raft_get_commit_idx(r));
         printf("%d\t", raft_get_last_applied_idx(r));
         printf("%d\t", raft_get_log_count(r));
-        /* printf("%d\t", sv->connected); */
-        /* printf("%d\t", sv->total_offer_count); */
+        printf("%d\t", sv->connected);
+        printf("%d\t", raft_get_num_nodes(r));
+        printf("%d\t", sv->total_offer_count);
         printf("\n");
     }
 }
@@ -164,6 +165,16 @@ static void __int_handler(int dummy)
     __print_stats();
 }
 
+static server_t* __get_leader(system_t* sys)
+{
+    int i;
+    for (i=0; i<sys->n_servers; i++)
+        if (sys->servers[i].connected)
+            if (raft_is_leader(sys->servers[i].raft))
+                return &sys->servers[i];
+    return NULL;
+}
+
 /** Raft callback for applying an entry to the finite state machine */
 static int __raft_applylog(
     raft_server_t* raft,
@@ -171,8 +182,6 @@ static int __raft_applylog(
     raft_entry_t *entry
     )
 {
-    /* State Machine Safety */
-
     int i;
 
     int last_applied_idx = raft_get_last_applied_idx(raft);
@@ -180,9 +189,42 @@ static int __raft_applylog(
 
     assert(last_applied_idx <= raft_get_current_idx(raft));
 
-    for (i = 0; i < sys.n_servers; i++)
+    system_t* sys = udata;
+    /* server_t* node = &sys->servers[raft_get_nodeid(raft)]; */
+
+    switch (ety->type)
     {
-        raft_server_t* other = sys.servers[i].raft;
+        case RAFT_LOGTYPE_REMOVE_NODE:
+            {
+                entry_cfg_change_t *chg = (void*)ety->data.buf;
+                /* server_t* peer_sv = &sys->servers[chg->node_id]; */
+                int is_self = chg->node_id == raft_get_nodeid(raft);
+
+                printf("finished removing %d from %d\n", chg->node_id, raft_get_nodeid(raft));
+
+                if (!is_self && raft_get_node(raft, chg->node_id))
+                {
+                    assert(raft_get_node(raft, chg->node_id));
+                    /* printf("node fully removed: %d\n", chg->node_id); */
+                    raft_remove_node(raft, raft_get_node(raft, chg->node_id));
+                }
+
+                if (is_self)
+                    return RAFT_ERR_SHUTDOWN;
+            }
+            break;
+        case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
+            break;
+        case RAFT_LOGTYPE_ADD_NODE:
+            break;
+        default:
+            break;
+    }
+
+    /* State Machine Safety */
+    for (i = 0; i < sys->n_servers; i++)
+    {
+        raft_server_t* other = sys->servers[i].raft;
 
         if (other == raft)
             continue;
@@ -237,26 +279,43 @@ static int __raft_persist_vote(
 void __raft_log(raft_server_t* raft, raft_node_t* node, void *udata,
                 const char *buf)
 {
-    system_t* sys = udata;
+    /* system_t* sys = udata; */
+
     if (node)
-        printf("> %lx, %lx %s\n",
-               (unsigned long)raft,
-               (unsigned long)sys->servers[raft_node_get_id(node)].raft,
+        /* printf("> %lx, %lx %s\n", */
+        /*        (unsigned long)raft, */
+        /*        (unsigned long)sys->servers[raft_node_get_id(node)].raft, */
+        printf("> %d, %d %s\n",
+               raft_get_nodeid(raft),
+               raft_node_get_id(node),
                buf);
     else
-        printf("> %lx               %s\n", (unsigned long)raft, buf);
+        printf("> %d               %s\n",
+               raft_get_nodeid(raft),
+               buf);
 }
 
 static peer_connection_t* __server_add_node(server_t* sv, const int node_id)
 {
     peer_connection_t* p = calloc(1, sizeof(*p));
 
-    p->next = sv->conns;
-    sv->conns = p;
+    /* p->next = sv->conns; */
+    /* sv->conns = p; */
 
     int is_myself = sv->node_id == node_id;
-    p->node = raft_add_node(sv->raft, p, node_id, is_myself);
+    raft_node_t* node = raft_add_node(sv->raft, p, node_id, is_myself);
+    assert(node);
     return p;
+}
+
+static server_t* __get_server_from_nodeid(system_t* sys, int node_id)
+{
+    int i;
+    for (i=0; i<sys->n_servers; i++)
+        if (sys->servers[i].node_id == node_id)
+            return &sys->servers[i];
+
+    return NULL;
 }
 
 /** Raft callback for appending an item to the log */
@@ -268,39 +327,56 @@ static int __raft_logentry_offer(
     )
 {
     system_t* sys = udata;
-    server_t* node = &sys->servers[raft_get_nodeid(r)];
+    server_t* server = __get_server_from_nodeid(sys, raft_get_nodeid(r));
+    assert(server);
 
-    node->total_offer_count += 1;
+    server->total_offer_count += 1;
 
     if (!raft_entry_is_cfg_change(ety))
         return 0;
 
     entry_cfg_change_t *chg = (void*)ety->data.buf;
-
     int is_self = chg->node_id == raft_get_nodeid(r);
-
-    server_t* peer_sv = &sys->servers[chg->node_id];
+    raft_node_t* node = raft_get_node(r, chg->node_id);
 
     switch (ety->type)
     {
         case RAFT_LOGTYPE_REMOVE_NODE:
-            if (!is_self && raft_get_node(r, chg->node_id))
-            {
-                assert(raft_get_node(r, chg->node_id));
-                raft_remove_node(r, raft_get_node(r, chg->node_id));
-            }
+            /* printf("removing %d from %d\n", chg->node_id, raft_get_nodeid(r)); */
+
+            if (!is_self && node)
+                /* node is fully removed on log application */
+                raft_node_set_voting(node, 0);
+
             if (is_self)
                 return RAFT_ERR_SHUTDOWN;
+            break;
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             {
-            peer_sv->connected = 1;
-            peer_connection_t* conn = __server_add_node(peer_sv, chg->node_id);
-            conn->node = raft_add_non_voting_node(r, conn, chg->node_id, is_self);
-            /* raft_node_set_udata(conn->node, conn); */
+            /* printf("adding %d to %d\n", chg->node_id, raft_get_nodeid(r)); */
+
+            peer_connection_t* conn = NULL;
+
+            server_t* peer_sv = __get_server_from_nodeid(sys, chg->node_id);
+            if (peer_sv)
+            {
+                /* peer_sv->connected = 1; */
+                /* conn = __server_add_node(peer_sv, chg->node_id); */
+            }
+
+            if (!is_self)
+            {
+                raft_node_t* node = raft_add_non_voting_node(r, conn, chg->node_id, is_self);
+                raft_node_set_udata(node, conn);
+            }
             }
             break;
         case RAFT_LOGTYPE_ADD_NODE:
-            raft_add_node(r, NULL, chg->node_id, is_self);
+            /* printf("adding voting %d to %d\n", chg->node_id, raft_get_nodeid(r)); */
+            {
+            node = raft_add_node(r, raft_node_get_udata(node), chg->node_id, is_self);
+            assert(node);
+            }
             break;
         default:
             assert(0);
@@ -354,7 +430,9 @@ static int __append_msg(
     if (random() % 100 < atoi(opts.drop_rate))
         return 0;
 
-    server_t* sv = &sys->servers[node_id];
+    server_t* sv = __get_server_from_nodeid(sys, node_id);
+    if (!sv)
+        return 0;
 
     if (sv->partitioned)
         return 0;
@@ -415,6 +493,36 @@ int sender_appendentries_response(raft_server_t* raft,
     return __append_msg(udata, msg, MSG_APPENDENTRIES_RESPONSE, sizeof(*msg), raft_node_get_id(node), raft);
 }
 
+/** Non-voting node now has enough logs to be able to vote.
+ * Append a finalization cfg log entry. */
+static void __raft_node_has_sufficient_logs(
+    raft_server_t* raft,
+    void *user_data,
+    raft_node_t* node)
+{
+    /* peer_connection_t* conn = raft_node_get_udata(node); */
+    server_t* leader = __get_leader(&sys);
+    entry_cfg_change_t *change = calloc(1, sizeof(*change));
+    change->node_id = raft_node_get_id(node);
+
+    msg_entry_t entry = {
+        // FIXME: Should be random
+        .id = 1,
+        .data.buf = (void*)change,
+        .data.len = sizeof(*change),
+        .type = RAFT_LOGTYPE_ADD_NODE,
+    };
+
+    assert(raft_entry_is_cfg_change(&entry));
+
+    assert(leader);
+
+    msg_entry_response_t r;
+    /* int e = raft_recv_entry(leader->raft, &entry, &r); */
+    raft_recv_entry(leader->raft, &entry, &r);
+    /* printf("adding log %d\n", e); */
+}
+
 raft_cbs_t raft_funcs = {
     .send_requestvote            = __raft_send_requestvote,
     .send_appendentries          = __raft_send_appendentries,
@@ -424,6 +532,7 @@ raft_cbs_t raft_funcs = {
     .log_offer                   = __raft_logentry_offer,
     .log_poll                    = __raft_logentry_poll,
     .log_pop                     = __raft_logentry_pop,
+    .node_has_sufficient_logs    = __raft_node_has_sufficient_logs,
     .log                         = __raft_log,
 };
 
@@ -465,11 +574,19 @@ static void __server_poll_messages(server_t* me, system_t* sys)
                 sizeof(response),
                 m->sender,
                 me->raft);
+
             if (RAFT_ERR_SHUTDOWN == e)
             {
+                /* printf("shutting down: %d\n", raft_get_nodeid(me->raft)); */
                 raft_clear(me->raft);
                 me->connected = 0;
+
                 while ((m = llqueue_poll(me->inbox)));
+
+                /* New servers SHOULD create a new node id for themselves 
+                 * For this server we do it in case it reconnects */
+                me->node_id = random();
+
                 return;
             }
         }
@@ -561,17 +678,16 @@ static void __push_entry(system_t* sys)
     for (i = 0; i < sys->n_servers; i++)
     {
         raft_server_t* r = sys->servers[i].raft;
-        if (raft_is_leader(r))
-        {
-            /* printf("adding %lx\n", (unsigned long)r); */
-            raft_entry_t* ety = calloc(1, sizeof(raft_entry_t));
-            ety->id = sys->n_entries++;
-            ety->data.buf = malloc(16);
-            ety->data.len = 16;
-            strrnd(ety->data.buf, 16);
-            msg_entry_response_t response;
-            raft_recv_entry(r, ety, &response);
-        }
+        if (!raft_is_leader(r))
+            continue;
+
+        raft_entry_t* ety = calloc(1, sizeof(raft_entry_t));
+        ety->id = sys->n_entries++;
+        ety->data.buf = malloc(16);
+        ety->data.len = 16;
+        strrnd(ety->data.buf, 16);
+        msg_entry_response_t response;
+        raft_recv_entry(r, ety, &response);
     }
 }
 
@@ -656,16 +772,6 @@ static void __poll_messages(system_t* sys)
             __server_poll_messages(&sys->servers[i], sys);
 }
 
-static server_t* __get_leader(system_t* sys)
-{
-    int i;
-    for (i=0; i<sys->n_servers; i++)
-        if (sys->servers[i].connected)
-            if (raft_is_leader(sys->servers[i].raft))
-                return &sys->servers[i];
-    return NULL;
-}
-
 static void __toggle_membership(server_t* node)
 {
     server_t* leader = __get_leader(&sys);
@@ -673,7 +779,10 @@ static void __toggle_membership(server_t* node)
     change->node_id = node->node_id;
 
     if (!leader)
+    {
+        printf("no leader, can't toggle\n");
         return;
+    }
 
     msg_entry_t entry = {
         // FIXME: Should be random
@@ -684,17 +793,29 @@ static void __toggle_membership(server_t* node)
                                   RAFT_LOGTYPE_ADD_NONVOTING_NODE
     };
 
+    if (!node->connected)
+    {
+        node->connected = 1;
+        raft_add_non_voting_node(node->raft, NULL, node->node_id, 1);
+    }
+    printf("toggle %d %d\n", node->node_id, node->connected);
+
     assert(raft_entry_is_cfg_change(&entry));
 
     assert(leader);
 
     msg_entry_response_t r;
+    /* int e =  */
     raft_recv_entry(leader->raft, &entry, &r);
+    /* printf("e %d\n", e); */
+    /* if (e == 0) */
+    /*     printf("change: %s %d\n", */
+    /*             entry.type == RAFT_LOGTYPE_REMOVE_NODE ? "remove" : "add", node->node_id); */
 }
 
 static void __periodic(system_t* sys)
 {
-    if (opts.debug)
+    /* if (opts.debug) */
         printf("\n");
 
     if (random() % 100 < sys->client_rate)
@@ -710,7 +831,12 @@ static void __periodic(system_t* sys)
 
         if (!opts.no_random_period)
             if (sys->servers[i].connected)
+            {
                 raft_periodic(sys->servers[i].raft, random() % 200);
+                printf("node %d peers %d\n",
+                    raft_get_nodeid(sys->servers[i].raft),
+                    raft_get_num_nodes(sys->servers[i].raft));
+            }
     }
 
     __ensure_election_safety(sys);
@@ -755,7 +881,6 @@ int main(int argc, char **argv)
     sys.n_servers = atoi(opts.servers);
     sys.servers = calloc(sys.n_servers, sizeof(*sys.servers));
 
-    /* create server for every node */
     for (i = 0; i < sys.n_servers; i++)
         __create_node(&sys.servers[i], i, &sys);
 
