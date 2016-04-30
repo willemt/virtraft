@@ -484,10 +484,22 @@ int raft_recv_requestvote(raft_server_t* me_,
         me->timeout_elapsed = 0;
     }
     else
-        r->vote_granted = 0;
+    {
+        if (raft_get_node(me_, vr->candidate_id))
+            r->vote_granted = RAFT_REQUESTVOTE_ERR_NOT_GRANTED;
+        else
+            /* It's possible the candidate node has been removed from the
+             * cluster but hasn't received the appendentries that confirms the
+             * removal. Therefore the node is partitioned and still thinks its
+             * part of the cluster. It will eventually send a requestvote. This
+             * is error response tells the node that it might be removed. */
+            r->vote_granted = RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE;
+    }
 
     __log(me_, node, "node requested vote: %d replying: %s",
-          node, r->vote_granted == 1 ? "granted" : "not granted");
+          node,
+          r->vote_granted == 1 ? "granted" :
+          r->vote_granted == 0 ? "not granted" : "unknown");
 
     r->term = raft_get_current_term(me_);
     return 0;
@@ -508,7 +520,8 @@ int raft_recv_requestvote_response(raft_server_t* me_,
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
     __log(me_, node, "node responded to requestvote status: %s",
-          r->vote_granted == 1 ? "granted" : "not granted");
+          r->vote_granted == 1 ? "granted" :
+          r->vote_granted == 0 ? "not granted" : "unknown");
 
     if (!raft_is_candidate(me_))
     {
@@ -529,17 +542,36 @@ int raft_recv_requestvote_response(raft_server_t* me_,
     }
 
     __log(me_, node, "node responded to requestvote: %d status: %s ct:%d rt:%d",
-          node, r->vote_granted == 1 ? "granted" : "not granted",
+          node,
+          r->vote_granted == 1 ? "granted" :
+          r->vote_granted == 0 ? "not granted" : "unknown",
           me->current_term,
           r->term);
 
-    if (1 == r->vote_granted)
+    switch (r->vote_granted)
     {
-        if (node)
-            raft_node_vote_for_me(node, 1);
-        int votes = raft_get_nvotes_for_me(me_);
-        if (raft_votes_is_majority(me->num_nodes, votes))
-            raft_become_leader(me_);
+        case 1:
+            if (node)
+                raft_node_vote_for_me(node, 1);
+            int votes = raft_get_nvotes_for_me(me_);
+            if (raft_votes_is_majority(me->num_nodes, votes))
+                raft_become_leader(me_);
+            break;
+        case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
+            {
+                raft_node_t* node = raft_get_my_node(me_);
+                printf("XXXX %p\n", node);
+                if (node && !raft_node_is_voting(node))
+                {
+                    printf("SHUTDOWN\n");
+                    return RAFT_ERR_SHUTDOWN;
+                }
+            }
+            break;
+        case RAFT_REQUESTVOTE_ERR_NOT_GRANTED:
+            break;
+        default:
+            assert(0);
     }
 
     return 0;

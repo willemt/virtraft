@@ -10,9 +10,13 @@
 #ifndef RAFT_H_
 #define RAFT_H_
 
-#define RAFT_ERR_NOT_LEADER             -2
-#define RAFT_ERR_ONE_VOTING_CHANGE_ONLY -3
-#define RAFT_ERR_SHUTDOWN -4
+#define RAFT_ERR_NOT_LEADER               -2
+#define RAFT_ERR_ONE_VOTING_CHANGE_ONLY   -3
+#define RAFT_ERR_SHUTDOWN                 -4
+
+#define RAFT_REQUESTVOTE_ERR_GRANTED       1
+#define RAFT_REQUESTVOTE_ERR_NOT_GRANTED   0
+#define RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE -1
 
 typedef enum {
     RAFT_STATE_NONE,
@@ -439,7 +443,10 @@ int raft_recv_requestvote(raft_server_t* me,
 /** Receive a response from a requestvote message we sent.
  * @param[in] node The node this response was sent by
  * @param[in] r The requestvote response message
- * @return 0 on success */
+ * @return
+ *  0 on success;
+ *  RAFT_ERR_SHUTDOWN server should be shutdown;
+ */
 int raft_recv_requestvote_response(raft_server_t* me,
                                    raft_node_t* node,
                                    msg_requestvote_response_t* r);
@@ -480,6 +487,10 @@ int raft_recv_entry(raft_server_t* me,
 /**
  * @return the server's node ID */
 int raft_get_nodeid(raft_server_t* me);
+
+/**
+ * @return the server's node */
+raft_node_t* raft_get_my_node(raft_server_t *me_);
 
 /**
  * @return currently configured election timeout in milliseconds */
