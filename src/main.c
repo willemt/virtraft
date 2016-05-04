@@ -807,10 +807,8 @@ static void __toggle_membership(server_t* node)
 
 static void __periodic(system_t* sys)
 {
-    /* if (opts.debug) */
+    if (opts.debug)
         printf("\n");
-
-    /* printf("ldr %d\n", sys->leader ? raft_node_get_id(sys->leader) : -1); */
 
     if (random() % 100 < sys->client_rate)
         __push_entry(sys);
@@ -820,39 +818,40 @@ static void __periodic(system_t* sys)
     int i;
     for (i = 0; i < sys->n_servers; i++)
     {
+        server_t* sv = &sys->servers[i];
+
         if (random() % 100 < sys->membership_rate)
             __toggle_membership(&sys->servers[i]);
 
-        if (!opts.no_random_period && sys->servers[i].connected)
+        if (!opts.no_random_period && sv->connected)
         {
-            int e = raft_periodic(sys->servers[i].raft, random() % 100);
+            int e = raft_periodic(sv->raft, random() % 100);
             if (-1 == e)
             {
-                printf("ERROR node %d\n",
-                    raft_get_nodeid(sys->servers[i].raft));
+                printf("ERROR node %d\n", raft_get_nodeid(sv->raft));
                 assert(0);
             }
             else if (RAFT_ERR_SHUTDOWN == e)
-                __shutdown_server(&sys->servers[i]);
+                __shutdown_server(sv);
             else
             {
                 int j, vpeers = 0;
-                for (j = 0; j < raft_get_num_nodes(sys->servers[i].raft); j++)
+                for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
                 {
-                    raft_node_t* node = raft_get_node_from_idx(sys->servers[i].raft, j);
+                    raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
                     vpeers += node && raft_node_is_voting(node) ? 1 : 0;
                 }
 
                 printf("node %0.10d peers (%d, %d)",
-                    raft_get_nodeid(sys->servers[i].raft),
-                    raft_get_num_nodes(sys->servers[i].raft),
+                    raft_get_nodeid(sv->raft),
+                    raft_get_num_nodes(sv->raft),
                     vpeers);
 
                 printf("\t\t\t\t\t\t\t\t(");
 
-                for (j = 0; j < raft_get_num_nodes(sys->servers[i].raft); j++)
+                for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
                 {
-                    raft_node_t* node = raft_get_node_from_idx(sys->servers[i].raft, j);
+                    raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
                     if (node && raft_node_is_voting(node))
                         printf("%0.10d ", raft_node_get_id(node));
                 }
