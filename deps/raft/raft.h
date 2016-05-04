@@ -10,13 +10,16 @@
 #ifndef RAFT_H_
 #define RAFT_H_
 
-#define RAFT_ERR_NOT_LEADER               -2
-#define RAFT_ERR_ONE_VOTING_CHANGE_ONLY   -3
-#define RAFT_ERR_SHUTDOWN                 -4
+#define RAFT_ERR_NOT_LEADER                  -2
+#define RAFT_ERR_ONE_VOTING_CHANGE_ONLY      -3
+#define RAFT_ERR_SHUTDOWN                    -4
 
-#define RAFT_REQUESTVOTE_ERR_GRANTED       1
-#define RAFT_REQUESTVOTE_ERR_NOT_GRANTED   0
-#define RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE -1
+#define RAFT_REQUESTVOTE_ERR_GRANTED          1
+#define RAFT_REQUESTVOTE_ERR_NOT_GRANTED      0
+/**
+ * vote granting failed because this node is pending removal */
+#define RAFT_REQUESTVOTE_ERR_PENDING_REMOVAL -1
+#define RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE    -2
 
 typedef enum {
     RAFT_STATE_NONE,
@@ -190,8 +193,9 @@ typedef int (
  * This triggers only when there are no pending configuration changes.
  * @param[in] raft The Raft server making this callback
  * @param[in] user_data User data that is passed from Raft server
- * @param[in] node The node */
-typedef void (
+ * @param[in] node The node
+ * @return 0 does not want to be notified again; otherwise -1 */
+typedef int (
 *func_node_has_sufficient_logs_f
 )   (
     raft_server_t* raft,
@@ -374,7 +378,10 @@ raft_node_t* raft_add_node(raft_server_t* me, void* user_data, int id, int is_se
 
 /** Add a node which does not participate in voting.
  * If a node already exists the call will fail.
- * Parameters are identical to raft_add_node */
+ * Parameters are identical to raft_add_node
+ * @return
+ *  node if it was successfully added;
+ *  NULL if the node already exists */
 raft_node_t* raft_add_non_voting_node(raft_server_t* me_, void* udata, int id, int is_self);
 
 /** Remove node.
@@ -485,7 +492,7 @@ int raft_recv_entry(raft_server_t* me,
                     msg_entry_response_t *r);
 
 /**
- * @return the server's node ID */
+ * @return server's node ID; -1 if it doesn't know what it is */
 int raft_get_nodeid(raft_server_t* me);
 
 /**

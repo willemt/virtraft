@@ -135,6 +135,8 @@ void raft_become_candidate(raft_server_t* me_)
     raft_set_current_term(me_, raft_get_current_term(me_) + 1);
     for (i = 0; i < me->num_nodes; i++)
         raft_node_vote_for_me(me->nodes[i], 0);
+
+    /* TODO: Shouldn't vote for itself it if isn't a voting node */
     raft_vote(me_, me->node);
     me->current_leader = NULL;
     raft_set_state(me_, RAFT_STATE_CANDIDATE);
@@ -144,8 +146,9 @@ void raft_become_candidate(raft_server_t* me_)
     me->timeout_elapsed = rand() % me->election_timeout;
 
     for (i = 0; i < me->num_nodes; i++)
-        if (me->node != me->nodes[i] && raft_node_is_voting(me->nodes[i]))
-            raft_send_requestvote(me_, me->nodes[i]);
+        if (me->node != me->nodes[i]) 
+            if (raft_node_is_voting(me->nodes[i]))
+                raft_send_requestvote(me_, me->nodes[i]);
 }
 
 void raft_become_follower(raft_server_t* me_)
@@ -181,6 +184,12 @@ raft_entry_t* raft_get_entry_from_idx(raft_server_t* me_, int etyidx)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
     return log_get_at_idx(me->log, etyidx);
+}
+
+int raft_voting_change_is_in_progress(raft_server_t* me_)
+{
+    raft_server_private_t* me = (raft_server_private_t*)me_;
+    return -1 != me->voting_cfg_change_log_idx;
 }
 
 int raft_recv_appendentries_response(raft_server_t* me_,
@@ -245,14 +254,16 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     raft_node_set_match_idx(node, r->current_idx);
 
     if (!raft_node_is_voting(node) &&
-        -1 == me->voting_cfg_change_log_idx &&
+        !raft_voting_change_is_in_progress(me_) &&
         raft_get_current_idx(me_) <= r->current_idx + 1 &&
         me->cb.node_has_sufficient_logs &&
-        0 == raft_node_has_sufficient_logs(node)
+        0 == raft_node_has_sufficient_logs(node) &&
+        !raft_node_is_pending_removal(node)
         )
     {
-        raft_node_set_has_sufficient_logs(node);
-        me->cb.node_has_sufficient_logs(me_, me->udata, node);
+        int e = me->cb.node_has_sufficient_logs(me_, me->udata, node);
+        if (0 == e)
+            raft_node_set_has_sufficient_logs(node);
     }
 
     /* Update commit idx */
@@ -431,10 +442,18 @@ int raft_already_voted(raft_server_t* me_)
 
 static int __should_grant_vote(raft_server_private_t* me, msg_requestvote_t* vr)
 {
+    /* TODO: 4.2.3 Raft Dissertation:
+     * if a server receives a RequestVote request within the minimum election
+     * timeout of hearing from a current leader, it does not update its term or
+     * grant its vote */
+
+    if (!raft_node_is_voting(raft_get_my_node((void*)me)))
+        return 0;
+
     if (vr->term < raft_get_current_term((void*)me))
         return 0;
 
-    /* TODO: if voted for is candiate return 1 (if below checks pass) */
+    /* TODO: if voted for is candidate return 1 (if below checks pass) */
     if (raft_already_voted((void*)me))
         return 0;
 
@@ -463,6 +482,23 @@ int raft_recv_requestvote(raft_server_t* me_,
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
+    if (!node)
+        node = raft_get_node(me_, vr->candidate_id);
+
+    /* It's possible the candidate node has been removed from the cluster but
+     * hasn't received the appendentries that confirms the removal. Therefore
+     * the node is partitioned and still thinks its part of the cluster. It
+     * will eventually send a requestvote. This is error response tells the
+     * node that it might be removed. */
+    if (node && raft_node_is_pending_removal(node))
+    {
+        r->vote_granted = RAFT_REQUESTVOTE_ERR_PENDING_REMOVAL;
+        printf("unknown node %d %d\n",
+            raft_get_nodeid(me_),
+            node ? raft_node_get_id(node) : -1);
+        goto done;
+    }
+
     if (raft_get_current_term(me_) < vr->term)
     {
         raft_set_current_term(me_, vr->term);
@@ -485,15 +521,16 @@ int raft_recv_requestvote(raft_server_t* me_,
     }
     else
     {
-        if (raft_get_node(me_, vr->candidate_id))
-            r->vote_granted = RAFT_REQUESTVOTE_ERR_NOT_GRANTED;
-        else
-            /* It's possible the candidate node has been removed from the
-             * cluster but hasn't received the appendentries that confirms the
-             * removal. Therefore the node is partitioned and still thinks its
-             * part of the cluster. It will eventually send a requestvote. This
-             * is error response tells the node that it might be removed. */
+        if (!node)
+        {
             r->vote_granted = RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE;
+            printf("unknown node %d %d\n",
+                raft_get_nodeid(me_),
+                node ? raft_node_get_id(node) : -1);
+            goto done;
+        }
+        else
+            r->vote_granted = 0;
     }
 
     __log(me_, node, "node requested vote: %d replying: %s",
@@ -501,6 +538,7 @@ int raft_recv_requestvote(raft_server_t* me_,
           r->vote_granted == 1 ? "granted" :
           r->vote_granted == 0 ? "not granted" : "unknown");
 
+done:
     r->term = raft_get_current_term(me_);
     return 0;
 }
@@ -550,23 +588,24 @@ int raft_recv_requestvote_response(raft_server_t* me_,
 
     switch (r->vote_granted)
     {
-        case 1:
+        case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
+        case RAFT_REQUESTVOTE_ERR_PENDING_REMOVAL:
+            {
+                raft_node_t* node = raft_get_my_node(me_);
+                if (raft_node_is_voting(node))
+                {
+                    printf("Time to shutdown %d XXXX %p\n", raft_get_nodeid(me_), node);
+                    printf("SHUTDOWN\n");
+                    return RAFT_ERR_SHUTDOWN;
+                }
+            }
+            break;
+        case RAFT_REQUESTVOTE_ERR_GRANTED:
             if (node)
                 raft_node_vote_for_me(node, 1);
             int votes = raft_get_nvotes_for_me(me_);
             if (raft_votes_is_majority(me->num_nodes, votes))
                 raft_become_leader(me_);
-            break;
-        case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
-            {
-                raft_node_t* node = raft_get_my_node(me_);
-                printf("XXXX %p\n", node);
-                if (node && !raft_node_is_voting(node))
-                {
-                    printf("SHUTDOWN\n");
-                    return RAFT_ERR_SHUTDOWN;
-                }
-            }
             break;
         case RAFT_REQUESTVOTE_ERR_NOT_GRANTED:
             break;
@@ -586,7 +625,7 @@ int raft_recv_entry(raft_server_t* me_,
 
     /* Only one voting cfg change at a time */
     if (raft_entry_is_voting_cfg_change(e))
-        if (-1 != me->voting_cfg_change_log_idx)
+        if (raft_voting_change_is_in_progress(me_))
             return RAFT_ERR_ONE_VOTING_CHANGE_ONLY;
 
     if (!raft_is_leader(me_))
@@ -603,8 +642,11 @@ int raft_recv_entry(raft_server_t* me_,
     raft_append_entry(me_, &ety);
     for (i = 0; i < me->num_nodes; i++)
     {
-        if (me->node == me->nodes[i] || !me->nodes[i] ||
-            !raft_node_is_voting(me->nodes[i]))
+        if (me->node == me->nodes[i] ||
+            !me->nodes[i] ||
+            !raft_node_is_voting(me->nodes[i]) ||
+            !raft_node_is_pending_removal(me->nodes[i])
+            )
             continue;
 
         /* Only send new entries.
@@ -744,7 +786,8 @@ void raft_send_appendentries_all(raft_server_t* me_)
 
     me->timeout_elapsed = 0;
     for (i = 0; i < me->num_nodes; i++)
-        if (me->node != me->nodes[i])
+        if (me->node != me->nodes[i] && 
+            !raft_node_is_pending_removal(me->nodes[i]))
             raft_send_appendentries(me_, me->nodes[i]);
 }
 
@@ -793,18 +836,23 @@ void raft_remove_node(raft_server_t* me_, raft_node_t* node)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
-    raft_node_t* new_array, *new_node;
+    raft_node_t* new_array, *new_nodes;
     new_array = (raft_node_t*)calloc((me->num_nodes - 1), sizeof(raft_node_t*));
-    new_node = new_array;
+    new_nodes = new_array;
 
-    int i;
+    int i, found = 0;
     for (i = 0; i<me->num_nodes; i++)
     {
         if (me->nodes[i] == node)
+        {
+            found = 1;
             continue;
-        *new_node = me->nodes[i];
-        new_node++;
+        }
+        *new_nodes = me->nodes[i];
+        new_nodes++;
     }
+
+    assert(found);
 
     me->num_nodes--;
     free(me->nodes);

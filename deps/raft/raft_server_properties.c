@@ -33,7 +33,10 @@ void raft_set_request_timeout(raft_server_t* me_, int millisec)
 
 int raft_get_nodeid(raft_server_t* me_)
 {
-    return raft_node_get_id(((raft_server_private_t*)me_)->node);
+    raft_server_private_t* me = (raft_server_private_t*)me_;
+    if (!me->node)
+        return -1;
+    return raft_node_get_id(me->node);
 }
 
 int raft_get_election_timeout(raft_server_t* me_)

@@ -19,6 +19,7 @@
 #define RAFT_NODE_VOTED_FOR_ME 1
 #define RAFT_NODE_VOTING 1 << 1
 #define RAFT_NODE_HAS_SUFFICIENT_LOG 1 << 2
+#define RAFT_NODE_PENDING_REMOVAL 1 << 3
 
 typedef struct
 {
@@ -113,15 +114,32 @@ int raft_node_is_voting(raft_node_t* me_)
     return (me->flags & RAFT_NODE_VOTING) != 0;
 }
 
+void raft_node_set_pending_removal(raft_node_t* me_, int pending_removal)
+{
+    raft_node_private_t* me = (raft_node_private_t*)me_;
+    if (pending_removal)
+        me->flags |= RAFT_NODE_PENDING_REMOVAL;
+    else
+        me->flags &= ~RAFT_NODE_PENDING_REMOVAL;
+}
+
+int raft_node_is_pending_removal(raft_node_t* me_)
+{
+    raft_node_private_t* me = (raft_node_private_t*)me_;
+    return (me->flags & RAFT_NODE_PENDING_REMOVAL) != 0;
+}
+
 void raft_node_set_has_sufficient_logs(raft_node_t* me_)
 {
     raft_node_private_t* me = (raft_node_private_t*)me_;
     me->flags |= RAFT_NODE_HAS_SUFFICIENT_LOG;
+    printf("%d\n", me->flags);
 }
 
 int raft_node_has_sufficient_logs(raft_node_t* me_)
 {
     raft_node_private_t* me = (raft_node_private_t*)me_;
+    printf("%d\n", me->flags);
     return (me->flags & RAFT_NODE_HAS_SUFFICIENT_LOG) != 0;
 }
 
