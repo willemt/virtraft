@@ -306,8 +306,17 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     raft_node_set_next_idx(node, r->current_idx + 1);
     raft_node_set_match_idx(node, r->current_idx);
 
+    if (!raft_node_is_voting(node))
+        printf("check %d %d %d %d\n",
+            raft_node_get_id(node), 
+            raft_get_current_idx(me_),
+            r->current_idx + 1,
+            me->voting_cfg_change_log_idx
+            );
+
     if (!raft_node_is_voting(node) &&
-        !raft_voting_change_is_in_progress(me_) &&
+        /* !raft_voting_change_is_in_progress(me_) && */
+        -1 == me->voting_cfg_change_log_idx &&
         raft_get_current_idx(me_) <= r->current_idx + 1 &&
         me->cb.node_has_sufficient_logs &&
         0 == raft_node_has_sufficient_logs(node)
@@ -346,7 +355,13 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         }
     }
 
-    if (me->num_nodes / 2 < votes && raft_get_commit_idx(me_) < point)
+    printf("votes: %d %d %d %d\n",
+        me->num_nodes / 2,
+        votes,
+        raft_get_commit_idx(me_),
+        point);
+
+    if (me->num_nodes / 2 <= votes && raft_get_commit_idx(me_) < point)
         raft_set_commit_idx(me_, point);
 
     /* Aggressively send remaining entries */
@@ -467,6 +482,7 @@ int raft_recv_appendentries(
         {
             r->success = 0;
             r->first_idx = 0;
+            printf("shutdown because of append entry\n");
             return RAFT_ERR_SHUTDOWN;
         }
         r->current_idx = ae->prev_log_idx + 1 + i;
@@ -653,6 +669,8 @@ int raft_recv_requestvote_response(raft_server_t* me_,
           me->current_term,
           r->term);
 
+    printf("voted granted: %d\n", r->vote_granted);
+
     switch (r->vote_granted)
     {
         case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
@@ -664,11 +682,11 @@ int raft_recv_requestvote_response(raft_server_t* me_,
             }
             break;
 
-        case RAFT_REQUESTVOTE_ERR_GRANTED:
+        case 1:
             if (node)
                 raft_node_vote_for_me(node, 1);
             int votes = raft_get_nvotes_for_me(me_);
-            if (raft_votes_is_majority(me->num_nodes, votes))
+            if (raft_votes_is_majority(raft_get_num_voting_nodes(me_), votes))
                 raft_become_leader(me_);
             break;
 
@@ -787,7 +805,10 @@ int raft_apply_entry(raft_server_t* me_)
     {
         int e = me->cb.applylog(me_, me->udata, ety);
         if (RAFT_ERR_SHUTDOWN == e)
+        {
+            printf("shutting down due to applylog\n");
             return RAFT_ERR_SHUTDOWN;
+        }
     }
 
     /* Membership Change: confirm connection with cluster */
@@ -840,8 +861,9 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
             ae.prev_log_term = prev_ety->term;
     }
 
-    __log(me_, node, "sending appendentries node: ci:%d t:%d lc:%d pli:%d plt:%d",
+    __log(me_, node, "sending appendentries node: ci:%d comi:%d t:%d lc:%d pli:%d plt:%d",
           raft_get_current_idx(me_),
+          raft_get_commit_idx(me_),
           ae.term,
           ae.leader_commit,
           ae.prev_log_idx,
@@ -984,7 +1006,10 @@ int raft_apply_all(raft_server_t* me_)
     {
         int e = raft_apply_entry(me_);
         if (RAFT_ERR_SHUTDOWN == e)
+        {
+            printf("shutting down due to applylog\n");
             return RAFT_ERR_SHUTDOWN;
+        }
     }
 
     return 0;
@@ -1034,7 +1059,10 @@ int raft_recv_entries_response(raft_server_t* me,
                               raft_node_t* node,
                               msg_entries_response_t* r)
 {
-    if (RAFT_ERR_UNKNOWN_NODE == r->success)
-        return RAFT_ERR_SHUTDOWN;
+    /* if (RAFT_ERR_UNKNOWN_NODE == r->success) */
+    /* { */
+    /*     printf("unkown shutdown\n"); */
+    /*     return RAFT_ERR_SHUTDOWN; */
+    /* } */
     return 0;
 }

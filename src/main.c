@@ -408,16 +408,22 @@ static int __raft_logentry_pop(
     switch (ety->type)
     {
         case RAFT_LOGTYPE_REMOVE_NODE:
-            assert(0);
+            {
+            int is_self = chg->node_id == raft_get_nodeid(raft);
+            raft_node_t* node = raft_add_node(raft, NULL, chg->node_id, is_self);
+            assert(node);
+            assert(raft_node_is_voting(node));
+            }
             break;
+
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             {
             raft_node_t* node = raft_get_node(raft, chg->node_id);
-            /* int is_self = chg->node_id == raft_get_nodeid(raft); */
             printf("POPPING %0.10d\n", chg->node_id);
             raft_remove_node(raft, node);
             }
             break;
+
         case RAFT_LOGTYPE_ADD_NODE:
             {
             raft_node_t* node = raft_get_node(raft, chg->node_id);
@@ -425,6 +431,7 @@ static int __raft_logentry_pop(
             raft_node_set_voting(node, 0);
             }
             break;
+
         default:
             break;
     }
@@ -540,6 +547,11 @@ static int __raft_node_has_sufficient_logs(
     entry_cfg_change_t *change = calloc(1, sizeof(*change));
     change->node_id = raft_node_get_id(node);
 
+    if (!leader)
+        return -1;
+
+    printf("SUFFXX %d\n", change->node_id);
+
     msg_entry_t entry = {
         // FIXME: Should be random
         .id = 1,
@@ -550,13 +562,11 @@ static int __raft_node_has_sufficient_logs(
 
     assert(raft_entry_is_cfg_change(&entry));
 
-    assert(leader);
-
     msg_entry_response_t r;
     int e = raft_recv_entry(leader->raft, &entry, &r);
     if (0 == e)
     {
-        printf("SUFFICIENT: %d\n", change->node_id);
+        printf("SUFFICIENT: %0.10d\n", change->node_id);
         return 0;
     }
 
