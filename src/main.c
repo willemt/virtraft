@@ -86,6 +86,8 @@ typedef struct
     /* stat: number of leadership changes */
     int leadership_changes;
 
+    int log_pops;
+
     int client_rate;
 
     int membership_rate;
@@ -228,14 +230,23 @@ static int __raft_applylog(
                 /*  */
             }
             break;
+
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             break;
+
         case RAFT_LOGTYPE_ADD_NODE:
             {
-            server_t* sv = __get_server_from_nodeid(sys, raft_get_nodeid(raft));
-            sv->connected = NODE_CONNECTED;
+                entry_cfg_change_t *chg = (void*)ety->data.buf;
+
+                if (chg->node_id == raft_get_nodeid(raft))
+                {
+                    server_t* sv = __get_server_from_nodeid(sys, raft_get_nodeid(raft));
+                    sv->connected = NODE_CONNECTED;
+                    printf("ADD NODE: %d\n", raft_get_nodeid(raft));
+                }
             }
             break;
+
         default:
             break;
     }
@@ -338,13 +349,11 @@ static int __raft_logentry_offer(
     switch (ety->type)
     {
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
-            {
             printf("adding %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r));
             if (!is_self)
             {
                 raft_node_t* node = raft_add_non_voting_node(r, NULL, chg->node_id, is_self);
                 assert(node);
-            }
             }
             break;
 
@@ -360,6 +369,7 @@ static int __raft_logentry_offer(
             if (node)
                 raft_remove_node(r, node);
             break;
+
         default:
             assert(0);
     }
@@ -392,6 +402,8 @@ static int __raft_logentry_pop(
     )
 {
     entry_cfg_change_t *chg = (void*)ety->data.buf;
+
+    sys.log_pops += 1;
 
     switch (ety->type)
     {
@@ -512,6 +524,7 @@ int __raft_send_entries(
     )
 {
     msg_entries_t* out = calloc(1, sizeof(msg_entries_t));
+    /* printf("sending entries %d\n", raft_get_nodeid(raft)); */
     memcpy(out, msg, sizeof(msg_entries_t));
     return __append_msg(udata, out, MSG_ENTRIES, sizeof(*out), raft_node_get_id(node), raft);
 }
@@ -935,16 +948,25 @@ static void __periodic(system_t* sys)
                     raft_get_num_nodes(sv->raft),
                     vpeers);
 
-                printf("\t\t\t\t\t\t\t\t(");
-
+                printf("\t\t\t\t\t(");
+#if 0
+                for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
+                {
+                    raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
+                    if (node)
+                        printf("%0.10d ", raft_node_get_id(node));
+                }
+                printf(") ");
+                printf("\t(");
+#endif
                 for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
                 {
                     raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
                     if (node && raft_node_is_voting(node))
                         printf("%0.10d ", raft_node_get_id(node));
                 }
-
                 printf(") ");
+
                 printf("%d ", sv->connected);
                 if (raft_is_leader(sv->raft))
                     printf("LDR");
@@ -1051,6 +1073,7 @@ int main(int argc, char **argv)
         __print_stats();
         printf("Maximum appendentries size: %d\n", sys.max_entries_in_ae);
         printf("Leadership changes: %d\n", sys.leadership_changes);
+        printf("Log pops: %d\n", sys.log_pops);
     }
 
     return 0;
