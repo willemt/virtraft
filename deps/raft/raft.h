@@ -13,13 +13,13 @@
 #define RAFT_ERR_NOT_LEADER                  -2
 #define RAFT_ERR_ONE_VOTING_CHANGE_ONLY      -3
 #define RAFT_ERR_SHUTDOWN                    -4
+#define RAFT_ERR_UNKNOWN_NODE                -5
 
 #define RAFT_REQUESTVOTE_ERR_GRANTED          1
 #define RAFT_REQUESTVOTE_ERR_NOT_GRANTED      0
 /**
  * vote granting failed because this node is pending removal */
-#define RAFT_REQUESTVOTE_ERR_PENDING_REMOVAL -1
-#define RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE    -2
+#define RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE    -1
 
 typedef enum {
     RAFT_STATE_NONE,
@@ -156,6 +156,41 @@ typedef struct
     int first_idx;
 } msg_appendentries_response_t;
 
+/** entries message. */
+typedef struct
+{
+    /** The node sending this */
+    int node_id;
+
+    /** number of entries within this message */
+    int n_entries;
+
+    /** array of entries within this message */
+    raft_entry_t* entries;
+} msg_entries_t;
+
+/** entries response message.
+ * This message could force the receiver to shutdown */
+typedef struct
+{
+    /** the last entry's unique ID */
+    unsigned int id;
+
+    /** the entries' term */
+    int term;
+
+    /** the last entry's index */
+    int idx;
+
+    int success;
+
+    /** Our node ID */
+    int node_id;
+
+    /** Who we believe the leader to be */
+    int leader_id;
+} msg_entries_response_t;
+
 typedef void* raft_server_t;
 typedef void* raft_node_t;
 
@@ -187,6 +222,30 @@ typedef int (
     void *user_data,
     raft_node_t* node,
     msg_appendentries_t* msg
+    );
+
+/** Callback for sending entries messages.
+ *
+ * This could be used for routing entry logs to the leader, or for pinging
+ * other nodes.
+ *
+ * This callback is optional if you do not need membership changes.
+ *
+ * This callback is required for membership changes as it is used as a ping to
+ * determine if a node has been removed from the cluster or not.
+ *
+ * @param[in] raft The Raft server making this callback
+ * @param[in] user_data User data that is passed from Raft server
+ * @param[in] node The node's ID that we are sending this message to
+ * @param[in] msg The message to be sent
+ * @return 0 on success */
+typedef int (
+*func_send_entries_f
+)   (
+    raft_server_t* raft,
+    void *user_data,
+    raft_node_t* node,
+    msg_entries_t* msg
     );
 
 /** Callback for detecting when non-voting nodes have obtained enough logs.
@@ -283,6 +342,9 @@ typedef struct
     /** Callback for sending appendentries messages */
     func_send_appendentries_f send_appendentries;
 
+    /** Callback for sending ping messages */
+    func_send_entries_f send_entries;
+
     /** Callback for finite state machine application
      * Return 0 on success.
      * Return RAFT_ERR_SHUTDOWN if you want the server to shutdown. */
@@ -313,6 +375,11 @@ typedef struct
      * @note If memory was malloc'd in log_offer then this should be the right
      *  time to free the memory. */
     func_logentry_event_f log_pop;
+
+    /** Callback for determining which node this configuration log entry
+     * affects. This call only applies to configuration change log entries.
+     * @return the node ID of the affected node */
+    func_logentry_event_f log_get_node_id;
 
     /** Callback for detecting when a non-voting node has sufficient logs. */
     func_node_has_sufficient_logs_f node_has_sufficient_logs;
@@ -420,7 +487,7 @@ int raft_periodic(raft_server_t* me, int msec_elapsed);
  *   memory permanent (ie. via malloc) OR re-assign the memory within the
  *   log_offer callback.
  *
- * @param[in] node Index of the node who sent us this message
+ * @param[in] node The node who sent us this message
  * @param[in] ae The appendentries message
  * @param[out] r The resulting response
  * @return 0 on success */
@@ -430,7 +497,7 @@ int raft_recv_appendentries(raft_server_t* me,
                             msg_appendentries_response_t *r);
 
 /** Receive a response from an appendentries message we sent.
- * @param[in] node Index of the node who sent us this message
+ * @param[in] node The node who sent us this message
  * @param[in] r The appendentries response message
  * @return 0 on success */
 int raft_recv_appendentries_response(raft_server_t* me,
@@ -438,7 +505,7 @@ int raft_recv_appendentries_response(raft_server_t* me,
                                      msg_appendentries_response_t* r);
 
 /** Receive a requestvote message.
- * @param[in] node Index of the node who sent us this message
+ * @param[in] node The node who sent us this message
  * @param[in] vr The requestvote message
  * @param[out] r The resulting response
  * @return 0 on success */
@@ -478,7 +545,7 @@ int raft_recv_requestvote_response(raft_server_t* me,
  *      <li>if the server is not the leader
  * </ul>
  *
- * @param[in] node Index of the node who sent us this message
+ * @param[in] node The node who sent us this message
  * @param[in] ety The entry message
  * @param[out] r The resulting response
  * @return
@@ -490,6 +557,25 @@ int raft_recv_requestvote_response(raft_server_t* me,
 int raft_recv_entry(raft_server_t* me,
                     msg_entry_t* ety,
                     msg_entry_response_t *r);
+
+/** Receive an entries message.
+ *
+ * @param[in] node The node who sent us this message
+ * @param[in] p The entries message
+ * @param[out] r The resulting response
+ * @return 0 on success */
+int raft_recv_entries(raft_server_t* me,
+                   raft_node_t* node,
+                   msg_entries_t* p,
+                   msg_entries_response_t *r);
+
+/** Receive a response from an entries message we sent.
+ * @param[in] node The node who sent us this message
+ * @param[in] r The entries response message
+ * @return 0 on success */
+int raft_recv_entries_response(raft_server_t* me,
+                            raft_node_t* node,
+                            msg_entries_response_t* r);
 
 /**
  * @return server's node ID; -1 if it doesn't know what it is */
@@ -506,6 +592,10 @@ int raft_get_election_timeout(raft_server_t* me);
 /**
  * @return number of nodes that this server has */
 int raft_get_num_nodes(raft_server_t* me);
+
+/**
+ * @return number of voting nodes that this server has */
+int raft_get_num_voting_nodes(raft_server_t* me_);
 
 /**
  * @return number of items within log */

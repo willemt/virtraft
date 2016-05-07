@@ -114,20 +114,20 @@ int raft_node_is_voting(raft_node_t* me_)
     return (me->flags & RAFT_NODE_VOTING) != 0;
 }
 
-void raft_node_set_pending_removal(raft_node_t* me_, int pending_removal)
-{
-    raft_node_private_t* me = (raft_node_private_t*)me_;
-    if (pending_removal)
-        me->flags |= RAFT_NODE_PENDING_REMOVAL;
-    else
-        me->flags &= ~RAFT_NODE_PENDING_REMOVAL;
-}
-
-int raft_node_is_pending_removal(raft_node_t* me_)
-{
-    raft_node_private_t* me = (raft_node_private_t*)me_;
-    return (me->flags & RAFT_NODE_PENDING_REMOVAL) != 0;
-}
+/* void raft_node_set_pending_removal(raft_node_t* me_, int pending_removal) */
+/* { */
+/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
+/*     if (pending_removal) */
+/*         me->flags |= RAFT_NODE_PENDING_REMOVAL; */
+/*     else */
+/*         me->flags &= ~RAFT_NODE_PENDING_REMOVAL; */
+/* } */
+/*  */
+/* int raft_node_is_pending_removal(raft_node_t* me_) */
+/* { */
+/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
+/*     return (me->flags & RAFT_NODE_PENDING_REMOVAL) != 0; */
+/* } */
 
 void raft_node_set_has_sufficient_logs(raft_node_t* me_)
 {

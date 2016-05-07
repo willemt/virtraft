@@ -44,6 +44,9 @@ typedef struct {
     int election_timeout;
     int request_timeout;
 
+    /* Number of consecutive election timeouts */
+    int num_election_timeouts;
+
     /* what this node thinks is the node ID of the current leader, or -1 if
      * there isn't a known current leader. */
     raft_node_t* current_leader;
@@ -57,9 +60,13 @@ typedef struct {
 
     /* the log which has a voting cfg change, otherwise -1 */
     int voting_cfg_change_log_idx;
+
+    /* our membership with the cluster is confirmed (ie. configuration log was
+     * committed) */
+    int connected;
 } raft_server_private_t;
 
-void raft_election_start(raft_server_t* me);
+int raft_election_start(raft_server_t* me);
 
 void raft_become_candidate(raft_server_t* me);
 

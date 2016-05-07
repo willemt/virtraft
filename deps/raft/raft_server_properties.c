@@ -54,6 +54,16 @@ int raft_get_num_nodes(raft_server_t* me_)
     return ((raft_server_private_t*)me_)->num_nodes;
 }
 
+int raft_get_num_voting_nodes(raft_server_t* me_)
+{
+    raft_server_private_t* me = (raft_server_private_t*)me_;
+    int i, num = 0;
+    for (i = 0; i < me->num_nodes; i++)
+        if (raft_node_is_voting(me->nodes[i]))
+            num++;
+    return num;
+}
+
 int raft_get_timeout_elapsed(raft_server_t* me_)
 {
     return ((raft_server_private_t*)me_)->timeout_elapsed;
@@ -206,4 +216,9 @@ int raft_get_last_log_term(raft_server_t* me_)
             return ety->term;
     }
     return 0;
+}
+
+int raft_is_connected(raft_server_t* me_)
+{
+    return ((raft_server_private_t*)me_)->connected;
 }
