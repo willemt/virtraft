@@ -203,6 +203,14 @@ static int __raft_applylog(
 
     switch (ety->type)
     {
+        case RAFT_LOGTYPE_DEMOTE_NODE:
+            {
+                entry_cfg_change_t *chg = (void*)ety->data.buf;
+                int is_self = chg->node_id == raft_get_nodeid(raft);
+                if (is_self)
+                    return RAFT_ERR_SHUTDOWN;
+            }
+            break;
         case RAFT_LOGTYPE_REMOVE_NODE:
             {
                 entry_cfg_change_t *chg = (void*)ety->data.buf;
@@ -365,6 +373,10 @@ static int __raft_logentry_offer(
             assert(raft_node_is_voting(node));
             break;
 
+        case RAFT_LOGTYPE_DEMOTE_NODE:
+            raft_node_set_voting(node, 0);
+            break;
+
         case RAFT_LOGTYPE_REMOVE_NODE:
             printf("REM %0.10d from %0.10d\n", chg->node_id, raft_get_nodeid(r));
             if (node)
@@ -421,12 +433,19 @@ static int __raft_logentry_pop(
 
     switch (ety->type)
     {
+        case RAFT_LOGTYPE_DEMOTE_NODE:
+            {
+            /* int is_self = chg->node_id == raft_get_nodeid(raft); */
+            raft_node_t* node = raft_get_node(raft, chg->node_id);
+            raft_node_set_voting(node, 1);
+            }
+            break;
+
         case RAFT_LOGTYPE_REMOVE_NODE:
             {
             int is_self = chg->node_id == raft_get_nodeid(raft);
-            raft_node_t* node = raft_add_node(raft, NULL, chg->node_id, is_self);
+            raft_node_t* node = raft_add_non_voting_node(raft, NULL, chg->node_id, is_self);
             assert(node);
-            assert(raft_node_is_voting(node));
             if (is_self)
                 sv->connected = NODE_CONNECTED;
             }
@@ -808,8 +827,12 @@ static int __voting_servers(system_t* sys)
 {
     int i, servers = 0;
     for (i = 0; i < sys->n_servers; i++)
-        if (sys->servers[i].connected == NODE_CONNECTED)
+    {
+        raft_node_t* node = raft_get_my_node(sys->servers[i].raft);
+        if (node && raft_node_is_voting(node))
+        /* if (sys->servers[i].connected == NODE_CONNECTED) */
             servers += 1;
+    }
     return servers;
 }
 
@@ -923,7 +946,7 @@ static void __toggle_membership(server_t* node)
         .data.buf = (void*)change,
         .data.len = sizeof(*change),
         .type = node->connected == NODE_CONNECTED ?
-            RAFT_LOGTYPE_REMOVE_NODE :
+            RAFT_LOGTYPE_DEMOTE_NODE :
             RAFT_LOGTYPE_ADD_NONVOTING_NODE
     };
 

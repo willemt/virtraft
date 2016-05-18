@@ -73,7 +73,7 @@ typedef struct {
     int connected;
 } raft_server_private_t;
 
-int raft_election_start(raft_server_t* me);
+void raft_election_start(raft_server_t* me);
 
 void raft_become_candidate(raft_server_t* me);
 

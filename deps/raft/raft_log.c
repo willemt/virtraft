@@ -89,6 +89,9 @@ static void __offer(raft_server_t* me_, raft_entry_t* ety, int idx)
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             break;
 
+        case RAFT_LOGTYPE_DEMOTE_NODE:
+            break;
+
         case RAFT_LOGTYPE_ADD_NODE:
             break;
 
@@ -119,6 +122,10 @@ static void __pop(raft_server_t* me_, raft_entry_t* ety, int idx)
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             me->connected = NODE_DISCONNECTED;
             break;
+
+        /* case RAFT_LOGTYPE_ADD_NONVOTING_NODE: */
+        /*     me->connected = NODE_DISCONNECTED; */
+        /*     break; */
 
         case RAFT_LOGTYPE_ADD_NODE:
             me->connected = NODE_CONNECTING;

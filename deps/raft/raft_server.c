@@ -110,7 +110,7 @@ void raft_delete_entry_from_idx(raft_server_t* me_, int idx)
     log_delete(me->log, idx);
 }
 
-int raft_election_start(raft_server_t* me_)
+void raft_election_start(raft_server_t* me_)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
@@ -119,8 +119,6 @@ int raft_election_start(raft_server_t* me_)
           raft_get_current_idx(me_));
 
     raft_become_candidate(me_);
-
-    return 0;
 }
 
 void raft_become_leader(raft_server_t* me_)
@@ -134,7 +132,7 @@ void raft_become_leader(raft_server_t* me_)
     for (i = 0; i < me->num_nodes; i++)
     {
         // FIXME: is_voting doesn't seem correct...
-        if (me->node == me->nodes[i])// || !raft_node_is_voting(me->nodes[i]))
+        if (me->node == me->nodes[i])
             continue;
 
         raft_node_t* node = me->nodes[i];
@@ -161,9 +159,9 @@ void raft_become_candidate(raft_server_t* me_)
     raft_set_state(me_, RAFT_STATE_CANDIDATE);
 
     /* We need a random factor here to prevent simultaneous candidates.
-     * This randomness can make the node slower (negative timeout), this is
-     * because we don't want to ALWAYS give one node a headstart which will
-     * result in a deadlock. */
+     * If the randomness is always positive it's possible that a fast node
+     * would deadlock the cluster by always gaining a headstart. To prevent
+     * this, we allow a negative randomness as a potential handicap. */
     me->timeout_elapsed = me->election_timeout - 2 * (rand() % me->election_timeout);
 
     for (i = 0; i < me->num_nodes; i++)
@@ -183,8 +181,7 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
 
     me->timeout_elapsed += msec_since_last_period;
 
-    /* If there is only one voting node then it's safe for us to become the
-     * leader */ 
+    /* Only one voting node means it's safe for us to become the leader */
     if (1 == raft_get_num_voting_nodes(me_) &&
         raft_node_is_voting(raft_get_my_node((void*)me)) &&
         !raft_is_leader(me_))
@@ -230,11 +227,7 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
 
         if (1 < raft_get_num_voting_nodes(me_) &&
             raft_node_is_voting(raft_get_my_node(me_)))
-        {
-            int e = raft_election_start(me_);
-            if (0 != e)
-                return e;
-        }
+            raft_election_start(me_);
     }
 
     if (me->last_applied_idx < me->commit_idx)
@@ -353,14 +346,14 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             raft_entry_t* ety = raft_get_entry_from_idx(me_, match_idx);
             if (ety->term == me->current_term && point <= match_idx)
             {
-                if (RAFT_LOGTYPE_REMOVE_NODE == ety->type &&
-                    me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, match_idx) == raft_get_nodeid(me_))
-                {
-                    printf("NO VOTE\n");
-
-                }
-                else
-                    votes++;
+                /* if (RAFT_LOGTYPE_REMOVE_NODE == ety->type && */
+                /*     me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, match_idx) == raft_get_nodeid(me_)) */
+                /* { */
+                /*     printf("NO VOTE\n"); */
+                /*  */
+                /* } */
+                /* else */
+                votes++;
             }
         }
     }
@@ -541,7 +534,7 @@ static int __should_grant_vote(raft_server_private_t* me, msg_requestvote_t* vr)
     if (vr->term < raft_get_current_term((void*)me))
         return 0;
 
-    /* TODO: if voted for is candidate return 1 (if below checks pass) */
+    /* TODO: if voted for is candiate return 1 (if below checks pass) */
     if (raft_already_voted((void*)me))
         return 0;
 
@@ -1038,7 +1031,7 @@ int raft_apply_all(raft_server_t* me_)
 int raft_entry_is_voting_cfg_change(raft_entry_t* ety)
 {
     return RAFT_LOGTYPE_ADD_NODE == ety->type ||
-           RAFT_LOGTYPE_REMOVE_NODE == ety->type;
+           RAFT_LOGTYPE_DEMOTE_NODE == ety->type;
 }
 
 int raft_entry_is_cfg_change(raft_entry_t* ety)
@@ -1046,6 +1039,7 @@ int raft_entry_is_cfg_change(raft_entry_t* ety)
     return (
         RAFT_LOGTYPE_ADD_NODE == ety->type ||
         RAFT_LOGTYPE_ADD_NONVOTING_NODE == ety->type ||
+        RAFT_LOGTYPE_DEMOTE_NODE == ety->type ||
         RAFT_LOGTYPE_REMOVE_NODE == ety->type);
 }
 
