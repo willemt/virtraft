@@ -67,6 +67,68 @@ static void __ensurecapacity(log_private_t * me)
     me->back = me->count;
 }
 
+static void __offer(raft_server_t* me_, raft_entry_t* ety, int idx)
+{
+    raft_server_private_t* me = (raft_server_private_t*)me_;
+
+    if (!raft_entry_is_cfg_change(ety))
+        return;
+
+    int node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, idx);
+    int is_self = node_id == raft_get_nodeid(me_);
+
+    if (!is_self)
+        return;
+
+    switch (ety->type)
+    {
+        case RAFT_LOGTYPE_REMOVE_NODE:
+            me->connected = NODE_DISCONNECTING;
+            break;
+
+        case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
+            break;
+
+        case RAFT_LOGTYPE_ADD_NODE:
+            break;
+
+        default:
+            break;
+    }
+}
+
+static void __pop(raft_server_t* me_, raft_entry_t* ety, int idx)
+{
+    raft_server_private_t* me = (raft_server_private_t*)me_;
+
+    if (!raft_entry_is_cfg_change(ety))
+        return;
+
+    int node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, idx);
+    int is_self = node_id == raft_get_nodeid(me_);
+
+    if (!is_self)
+        return;
+
+    switch (ety->type)
+    {
+        case RAFT_LOGTYPE_REMOVE_NODE:
+            me->connected = NODE_DISCONNECTED;
+            break;
+
+        case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
+            me->connected = NODE_DISCONNECTED;
+            break;
+
+        case RAFT_LOGTYPE_ADD_NODE:
+            me->connected = NODE_CONNECTING;
+            break;
+
+        default:
+            break;
+    }
+}
+
 log_t* log_new()
 {
     log_private_t* me = (log_private_t*)calloc(1, sizeof(log_private_t));
@@ -112,6 +174,8 @@ int log_append_entry(log_t* me_, raft_entry_t* c)
         e = me->cb->log_offer(me->raft, ud, c, me->back);
         if (e == RAFT_ERR_SHUTDOWN)
             return e;
+
+        __offer(me->raft, c, me->back);
     }
 
     memcpy(&me->entries[me->back], c, sizeof(raft_entry_t));
@@ -185,8 +249,13 @@ void log_delete(log_t* me_, int idx)
     for (end = log_count(me_); idx < end; idx++)
     {
         if (me->cb && me->cb->log_pop)
+        {
             me->cb->log_pop(me->raft, raft_get_udata(me->raft),
                             &me->entries[me->back - 1], me->back);
+
+            __pop(me->raft, &me->entries[me->back - 1], me->back);
+        }
+
         me->back--;
         me->count--;
     }

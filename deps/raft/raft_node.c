@@ -31,6 +31,9 @@ typedef struct
     int flags;
 
     int id;
+
+    /* number of failed request votes */
+    int num_failed_rvs;
 } raft_node_private_t;
 
 raft_node_t* raft_node_new(void* udata, int id)
@@ -148,3 +151,21 @@ int raft_node_get_id(raft_node_t* me_)
     raft_node_private_t* me = (raft_node_private_t*)me_;
     return me->id;
 }
+
+/* void raft_node_request_vote_failed(raft_node_t* me_) */
+/* { */
+/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
+/*     return me->num_failed_rvs += 1; */
+/* } */
+/*  */
+/* int raft_node_get_num_request_vote_failed(raft_node_t* me_) */
+/* { */
+/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
+/*     return me->num_failed_rvs; */
+/* } */
+/*  */
+/* void raft_node_clear_num_request_vote_failed(raft_node_t* me_) */
+/* { */
+/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
+/*     me->num_failed_rvs = 0; */
+/* } */

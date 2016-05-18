@@ -1,6 +1,13 @@
 #ifndef RAFT_PRIVATE_H_
 #define RAFT_PRIVATE_H_
 
+enum {
+    NODE_DISCONNECTED,
+    NODE_CONNECTED,
+    NODE_CONNECTING,
+    NODE_DISCONNECTING
+};
+
 /**
  * Copyright (c) 2013, Willem-Hendrik Thiart
  * Use of this source code is governed by a BSD-style license that can be
