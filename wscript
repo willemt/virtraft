@@ -51,6 +51,7 @@ def build(bld):
         lib.append('rt')
 
     clibs = """
+        farraylist
         linked-list-queue
         raft
         """.split()

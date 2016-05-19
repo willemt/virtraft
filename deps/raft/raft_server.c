@@ -365,7 +365,11 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     /*     point); */
 
     if (raft_get_num_voting_nodes(me_) / 2 < votes && raft_get_commit_idx(me_) < point)
+    {
+        __log(me_, node, "increasing commit idx to %d %dvs%d\n",
+                point, raft_get_num_voting_nodes(me_) / 2, votes);
         raft_set_commit_idx(me_, point);
+    }
 
     /* Aggressively send remaining entries */
     if (raft_get_entry_from_idx(me_, raft_node_get_next_idx(node)))
@@ -498,6 +502,10 @@ int raft_recv_appendentries(
     if (raft_get_commit_idx(me_) < ae->leader_commit)
     {
         int last_log_idx = max(raft_get_current_idx(me_), 1);
+
+        __log(me_, node, "increazzzzing commit idx to %d %d\n",
+            ae->leader_commit, last_log_idx);
+
         raft_set_commit_idx(me_, min(last_log_idx, ae->leader_commit));
     }
 
@@ -756,7 +764,11 @@ int raft_recv_entry(raft_server_t* me_,
 
     /* if we're the only node, we can consider the entry committed */
     if (1 == raft_get_num_voting_nodes(me_))
-        me->commit_idx = raft_get_current_idx(me_);
+    {
+        __log(me_, NULL, "increaxxxing commit idx to %d\n",
+            raft_get_current_idx(me_));
+        raft_set_commit_idx(me_, raft_get_current_idx(me_));
+    }
 
     r->id = e->id;
     r->idx = raft_get_current_idx(me_);
@@ -817,7 +829,7 @@ int raft_apply_entry(raft_server_t* me_)
     me->last_applied_idx++;
     if (me->cb.applylog)
     {
-        int e = me->cb.applylog(me_, me->udata, ety);
+        int e = me->cb.applylog(me_, me->udata, ety, me->last_applied_idx - 1);
         if (RAFT_ERR_SHUTDOWN == e)
         {
             printf("shutting down due to applylog\n");
@@ -826,11 +838,15 @@ int raft_apply_entry(raft_server_t* me_)
     }
 
     /* Membership Change: confirm connection with cluster */
-    if (RAFT_LOGTYPE_ADD_NODE == ety->type &&
-        me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, log_idx) == raft_get_nodeid(me_))
+    if (RAFT_LOGTYPE_ADD_NODE == ety->type)
     {
-        printf("FULLY CONNECTED %0.10d\n", raft_get_nodeid(me_));
-        me->connected = NODE_CONNECTED;
+        int node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, log_idx);
+        raft_node_t* node = raft_get_node(me_, node_id);
+        // TODO: add test
+        raft_node_set_has_sufficient_logs(node);
+
+        if (node_id == raft_get_nodeid(me_))
+            me->connected = NODE_CONNECTED;
     }
 
     /* voting cfg change is now complete */

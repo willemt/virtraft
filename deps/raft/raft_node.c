@@ -136,13 +136,11 @@ void raft_node_set_has_sufficient_logs(raft_node_t* me_)
 {
     raft_node_private_t* me = (raft_node_private_t*)me_;
     me->flags |= RAFT_NODE_HAS_SUFFICIENT_LOG;
-    printf("%d\n", me->flags);
 }
 
 int raft_node_has_sufficient_logs(raft_node_t* me_)
 {
     raft_node_private_t* me = (raft_node_private_t*)me_;
-    printf("%d\n", me->flags);
     return (me->flags & RAFT_NODE_HAS_SUFFICIENT_LOG) != 0;
 }
 

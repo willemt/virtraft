@@ -12,6 +12,7 @@
 
 #include "raft.h"
 #include "linked_list_queue.h"
+#include "fixed_arraylist.h"
 
 #include "usage.c"
 
@@ -91,6 +92,8 @@ typedef struct
     int client_rate;
 
     int membership_rate;
+
+    farraylist_t* commits;
 } system_t;
 
 system_t sys;
@@ -192,14 +195,35 @@ static server_t* __get_leader(system_t* sys)
 static int __raft_applylog(
     raft_server_t* raft,
     void *udata,
-    raft_entry_t *ety
+    raft_entry_t *ety,
+    int idx
     )
 {
-    int i, last_applied_idx = raft_get_last_applied_idx(raft);
+    int i;
 
-    assert(last_applied_idx <= raft_get_current_idx(raft));
+    assert(idx <= raft_get_current_idx(raft));
 
     system_t* sys = udata;
+
+    /* Log Matching
+    *  If two logs contain an entry with the same index and term, then the
+    *  logs are identical in all entries up through the given index.
+    *
+    * Leader Completeness
+    *  If a log entry is committed in a given term, then that entry will be
+    *  present in the logs of the leaders for all higher-numbered terms. */
+
+    raft_entry_t* ety_stored = farraylist_get(sys->commits, idx);
+    if (!ety_stored)
+    {
+        ety_stored = calloc(1, sizeof(*ety));
+        memcpy(ety_stored, ety, sizeof(*ety));
+        farraylist_insert(sys->commits, ety_stored, idx);
+    }
+    else if (ety_stored->id != ety->id)
+    {
+        assert(0);
+    }
 
     switch (ety->type)
     {
@@ -217,7 +241,7 @@ static int __raft_applylog(
                 int is_self = chg->node_id == raft_get_nodeid(raft);
 
                 printf("COMMIT: %d finished removing %0.10d from %0.10d\n",
-                        last_applied_idx, chg->node_id, raft_get_nodeid(raft));
+                        idx, chg->node_id, raft_get_nodeid(raft));
 
                 if (is_self)
                     return RAFT_ERR_SHUTDOWN;
@@ -268,13 +292,13 @@ static int __raft_applylog(
         if (other == raft || other == NULL)
             continue;
 
-        raft_entry_t* other_ety = raft_get_entry_from_idx(other, last_applied_idx);
-        if (other_ety && last_applied_idx <= raft_get_commit_idx(other))
+        raft_entry_t* other_ety = raft_get_entry_from_idx(other, idx + 1);
+        if (other_ety && idx + 1 <= raft_get_commit_idx(other))
         {
             if (ety->term != other_ety->term || ety->id != other_ety->id)
             {
                 printf("node applied bad ety idx:%d (ie. t: %d vs %d) %lx %lx id: %d vs %d\n",
-                       last_applied_idx,
+                       idx + 1,
                        ety->term,
                        other_ety ? other_ety->term : -999,
                        (unsigned long)raft,
@@ -358,7 +382,7 @@ static int __raft_logentry_offer(
     switch (ety->type)
     {
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
-            printf("ADD %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r));
+            /* printf("ADD %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r)); */
             if (!is_self)
             {
                 raft_node_t* node = raft_add_non_voting_node(r, NULL, chg->node_id, is_self);
@@ -367,7 +391,7 @@ static int __raft_logentry_offer(
             break;
 
         case RAFT_LOGTYPE_ADD_NODE:
-            printf("ADDV voting %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r));
+            /* printf("ADDV voting %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r)); */
             node = raft_add_node(r, NULL, chg->node_id, is_self);
             assert(node);
             assert(raft_node_is_voting(node));
@@ -577,7 +601,7 @@ int __raft_send_entries(
     )
 {
     msg_entries_t* out = calloc(1, sizeof(msg_entries_t));
-    printf("sending entries %d\n", raft_get_nodeid(raft));
+    /* printf("sending entries %d\n", raft_get_nodeid(raft)); */
     memcpy(out, msg, sizeof(msg_entries_t));
     return __append_msg(udata, out, MSG_ENTRIES, sizeof(*out), raft_node_get_id(node), raft);
 }
@@ -786,15 +810,6 @@ static void __ensure_election_safety(system_t* sys)
     }
 }
 
-// TODO:
-/* Log Matching
- * If two logs contain an entry with the same index and term, then the
- * logs are identical in all entries up through the given index. */
-static void __ensure_log_matching(system_t* sys)
-{
-
-}
-
 void strrnd(char* s, size_t len)
 {
     int i;
@@ -834,72 +849,6 @@ static int __voting_servers(system_t* sys)
             servers += 1;
     }
     return servers;
-}
-
-// FIXME: this is O(n^2)
-/** Leader Completeness
- * If a log entry is committed in a given term, then that entry will be present
- * in the logs of the leaders for all higher-numbered terms. §3.6 */
-static void __ensure_leader_completeness(system_t* sys)
-{
-    int i;
-
-    for (i = 0; i < sys->n_servers; i++)
-    {
-        raft_server_t* r = sys->servers[i].raft;
-
-        if (sys->servers[i].connected != NODE_CONNECTED)
-            continue;
-
-        int j;
-        int comi = raft_get_commit_idx(r);
-
-        /* we need to confirm that at least half of the servers have this */
-        int have = 1;
-
-        if (comi == 0)
-            continue;
-
-        raft_entry_t* ety = raft_get_entry_from_idx(r, comi);
-
-        for (j=0; j < sys->n_servers; j++)
-        {
-            raft_server_t* r2 = sys->servers[j].raft;
-
-            if (sys->servers[j].connected != NODE_CONNECTED)
-                continue;
-
-            if (r == r2)
-                continue;
-
-            /* all the other servers should not conflict with this */
-
-            raft_entry_t* oety = raft_get_entry_from_idx(r2, comi);
-
-            if (!oety)
-                continue;
-
-            if (!(oety->term != ety->term || oety->id != ety->id))
-            {
-                have += 1;
-            }
-        }
-
-        /* a majority don't have it */
-        if (!(__voting_servers(sys) / 2 <= have))
-        {
-            printf("leaders completeness failed: %d/%d %d commit_idx: %d t: %d id: %d\n",
-                   have,
-                   __voting_servers(sys),
-                   raft_get_nodeid(r),
-                   raft_get_commit_idx(r),
-                   ety->term,
-                   ety->id
-                   );
-            __int_handler(0);
-            abort();
-        }
-    }
 }
 
 static void __poll_messages(system_t* sys)
@@ -967,7 +916,6 @@ static void __toggle_membership(server_t* node)
         node->connected = NODE_CONNECTING;
         raft_node_t* added_node = raft_add_non_voting_node(node->raft, NULL, node->node_id, 1);
 
-        printf("%d\n", llqueue_count(node->inbox));
         assert(llqueue_count(node->inbox) == 0);
         assert(added_node);
     }
@@ -1016,11 +964,12 @@ static void __periodic(system_t* sys)
                     vpeers += node && raft_node_is_voting(node) ? 1 : 0;
                 }
 
-                printf("node %0.10d peers (%d, %d) ci:%d",
+                printf("node %0.10d peers (%d, %d) ci:%d t:%d",
                     raft_get_nodeid(sv->raft),
                     raft_get_num_nodes(sv->raft),
                     vpeers,
-                    raft_get_current_idx(sv->raft)
+                    raft_get_current_idx(sv->raft),
+                    raft_get_current_term(sv->raft)
                     );
 
                 printf("\t\t\t(");
@@ -1053,6 +1002,8 @@ static void __periodic(system_t* sys)
     __ensure_election_safety(sys);
     __ensure_log_matching(sys);
     __ensure_leader_completeness(sys);
+    /* __ensure_term_does_not_drop(sys); */
+
     /* TODO: add deadlock detection */
 
     /* collect stats */
@@ -1089,6 +1040,8 @@ int main(int argc, char **argv)
     signal(SIGINT, __int_handler);
 
     srand(atoi(opts.seed));
+
+    sys.commits = farraylist_new();
 
     sys.n_servers = atoi(opts.servers);
     sys.servers = calloc(sys.n_servers, sizeof(*sys.servers));
