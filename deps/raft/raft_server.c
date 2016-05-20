@@ -1097,8 +1097,8 @@ int raft_recv_entries_response(raft_server_t* me_,
 
     if (RAFT_ERR_UNKNOWN_NODE == r->success && me->connected == NODE_DISCONNECTING)
     {
-        __log(me_, node, "unknown shutdown %d", r->node_id);
-        return RAFT_ERR_SHUTDOWN;
+        /* __log(me_, node, "unknown shutdown %d", r->node_id); */
+        /* return RAFT_ERR_SHUTDOWN; */
     }
     return 0;
 }

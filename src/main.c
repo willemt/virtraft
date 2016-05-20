@@ -1000,10 +1000,7 @@ static void __periodic(system_t* sys)
     }
 
     __ensure_election_safety(sys);
-    __ensure_log_matching(sys);
-    __ensure_leader_completeness(sys);
-    /* __ensure_term_does_not_drop(sys); */
-
+    /* TODO: __ensure_term_does_not_drop(sys); */
     /* TODO: add deadlock detection */
 
     /* collect stats */
