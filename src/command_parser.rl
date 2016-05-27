@@ -29,8 +29,6 @@ struct path_parse
     action periodic {
         raft_periodic(sys.servers[fc - '0'].raft, 500);
         __ensure_election_safety(&sys);
-        __ensure_log_matching(&sys);
-        __ensure_leader_completeness(&sys);
         __poll_messages(&sys);
     }
 

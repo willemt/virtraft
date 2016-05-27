@@ -17,7 +17,7 @@ struct path_parse
 };
 
 
-#line 95 "src/command_parser.rl"
+#line 72 "src/command_parser.rl"
 
 
 
@@ -92,7 +92,7 @@ static const int path_parse_error = 0;
 static const int path_parse_en_main = 29;
 
 
-#line 98 "src/command_parser.rl"
+#line 75 "src/command_parser.rl"
 
 static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result)
 {
@@ -105,7 +105,7 @@ static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result
 	 fsm->cs = path_parse_start;
 	}
 
-#line 105 "src/command_parser.rl"
+#line 82 "src/command_parser.rl"
 }
 
 static void __execute(struct path_parse *fsm, const char *data, size_t len)
@@ -199,27 +199,25 @@ _match:
 	{
         raft_periodic(sys.servers[(*p) - '0'].raft, 500);
         __ensure_election_safety(&sys);
-        __ensure_log_matching(&sys);
-        __ensure_leader_completeness(&sys);
         __poll_messages(&sys);
     }
 	break;
 	case 2:
-#line 37 "src/command_parser.rl"
+#line 35 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
         __server_poll_messages(&sys.servers[(*p) - '0'], &sys);
     }
 	break;
 	case 3:
-#line 42 "src/command_parser.rl"
+#line 40 "src/command_parser.rl"
 	{
         __push_entry(fsm->sys);
         __server_drop_messages(&sys.servers[(*p) - '0'], &sys);
     }
 	break;
 	case 4:
-#line 47 "src/command_parser.rl"
+#line 45 "src/command_parser.rl"
 	{
         int node_id1 = *(p) - '0';
         server_t* sv = &sys.servers[node_id1];
@@ -227,38 +225,17 @@ _match:
     }
 	break;
 	case 5:
-#line 53 "src/command_parser.rl"
+#line 51 "src/command_parser.rl"
 	{
         int node_id1 = *(p) - '0';
-        server_t* leader = __get_leader(&sys);
         server_t* node = &sys.servers[node_id1];
 
-        entry_cfg_change_t *change = calloc(1, sizeof(*change));
-        change->node_id = node_id1;
-
-        if (!leader)
-            return;
-
-        msg_entry_t entry = {
-            // FIXME: Should be random
-            .id = 1,
-            .data.buf = (void*)change,
-            .data.len = sizeof(*change),
-            .type = node->connected ? RAFT_LOGTYPE_REMOVE_NODE :
-                                      RAFT_LOGTYPE_ADD_NONVOTING_NODE
-        };
-
-        assert(raft_entry_is_cfg_change(&entry));
-
-        assert(leader);
-
-        msg_entry_response_t r;
-        raft_recv_entry(leader->raft, &entry, &r);
+        __toggle_membership(node);
 
         __poll_messages(&sys);
     }
 	break;
-#line 262 "src/command_parser.c"
+#line 239 "src/command_parser.c"
 		}
 	}
 
@@ -271,7 +248,7 @@ _again:
 	_out: {}
 	}
 
-#line 113 "src/command_parser.rl"
+#line 90 "src/command_parser.rl"
 }
 
 static int __finish(struct path_parse *fsm)
