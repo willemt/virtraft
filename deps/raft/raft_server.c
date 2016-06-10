@@ -99,10 +99,6 @@ void raft_clear(raft_server_t* me_)
 void raft_delete_entry_from_idx(raft_server_t* me_, int idx)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
-    /* raft_entry_t* ety = raft_get_entry_from_idx(me_, idx); */
-
-    printf("%0.10d %d vs %d\n",
-            raft_get_nodeid(me_), raft_get_commit_idx(me_), idx);
 
     if (idx <= me->voting_cfg_change_log_idx)
         me->voting_cfg_change_log_idx = -1;
@@ -309,14 +305,6 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     raft_node_set_next_idx(node, r->current_idx + 1);
     raft_node_set_match_idx(node, r->current_idx);
 
-    if (!raft_node_is_voting(node))
-        printf("check %d %d %d %d\n",
-            raft_node_get_id(node), 
-            raft_get_current_idx(me_),
-            r->current_idx + 1,
-            me->voting_cfg_change_log_idx
-            );
-
     if (!raft_node_is_voting(node) &&
         /* !raft_voting_change_is_in_progress(me_) && */
         -1 == me->voting_cfg_change_log_idx &&
@@ -345,24 +333,9 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         {
             raft_entry_t* ety = raft_get_entry_from_idx(me_, match_idx);
             if (ety->term == me->current_term && point <= match_idx)
-            {
-                /* if (RAFT_LOGTYPE_REMOVE_NODE == ety->type && */
-                /*     me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, match_idx) == raft_get_nodeid(me_)) */
-                /* { */
-                /*     printf("NO VOTE\n"); */
-                /*  */
-                /* } */
-                /* else */
                 votes++;
-            }
         }
     }
-
-    /* printf("votes: %d %d %d %d\n", */
-    /*     raft_get_num_voting_nodes(me_) / 2, */
-    /*     votes, */
-    /*     raft_get_commit_idx(me_), */
-    /*     point); */
 
     if (raft_get_num_voting_nodes(me_) / 2 < votes && raft_get_commit_idx(me_) < point)
     {
@@ -456,8 +429,6 @@ int raft_recv_appendentries(
        follow it (§5.3) */
     if (ae->n_entries == 0 && 0 < ae->prev_log_idx && ae->prev_log_idx + 1 < raft_get_current_idx(me_))
     {
-        printf("%0.10d %d %d\n",
-                raft_get_nodeid(me_), me->commit_idx, ae->prev_log_idx);
         assert(me->commit_idx < ae->prev_log_idx + 1);
         raft_delete_entry_from_idx(me_, ae->prev_log_idx + 1);
     }
@@ -491,7 +462,6 @@ int raft_recv_appendentries(
         {
             r->success = 0;
             r->first_idx = 0;
-            printf("shutdown because of append entry\n");
             return RAFT_ERR_SHUTDOWN;
         }
         r->current_idx = ae->prev_log_idx + 1 + i;
@@ -574,15 +544,6 @@ int raft_recv_requestvote(raft_server_t* me_,
     if (!node)
         node = raft_get_node(me_, vr->candidate_id);
 
-   /* if (!node) */
-   /*  { */
-   /*      r->vote_granted = RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE; */
-   /*      #<{(| printf("unknown node %d %d\n", |)}># */
-   /*      #<{(|     raft_get_nodeid(me_), |)}># */
-   /*      #<{(|     node ? raft_node_get_id(node) : -1); |)}># */
-   /*      goto done; */
-   /*  } */
-
     if (raft_get_current_term(me_) < vr->term)
     {
         raft_set_current_term(me_, vr->term);
@@ -615,9 +576,6 @@ int raft_recv_requestvote(raft_server_t* me_,
         if (!node)
         {
             r->vote_granted = RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE;
-            /* printf("unknown node %d %d\n", */
-            /*     raft_get_nodeid(me_), */
-            /*     node ? raft_node_get_id(node) : -1); */
             goto done;
         }
         else
@@ -687,11 +645,7 @@ int raft_recv_requestvote_response(raft_server_t* me_,
         case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
             if (raft_node_is_voting(raft_get_my_node(me_)) &&
                 me->connected == NODE_DISCONNECTING)
-            {
-                printf("Time to shutdown %d XXXX\n", raft_get_nodeid(me_));
-                printf("SHUTDOWN\n");
                 return RAFT_ERR_SHUTDOWN;
-            }
             break;
 
         case 1:
@@ -703,16 +657,6 @@ int raft_recv_requestvote_response(raft_server_t* me_,
             break;
 
         case RAFT_REQUESTVOTE_ERR_NOT_GRANTED:
-            /* After we append a new voting node, it's possible that the
-             * same log won't be appended to that node by the time the leader
-             * steps down. This leads to a deadlock. The node doesn't grant
-             * votes due to it not knowing it can vote!  Here, if our new
-             * pending configuration is preventing us from progressing it's
-             * probably bad and needs to be deleted. */
-            /* if (raft_get_num_voting_nodes(me_) == 2 && */
-            /*     raft_voting_change_is_in_progress(me_) && */
-            /*     raft_get_commit_idx(me_) < raft_get_current_idx(me_)) */
-            /*     raft_delete_entry_from_idx(me_, raft_get_current_idx(me_)); */
             break;
 
         default:
@@ -831,10 +775,7 @@ int raft_apply_entry(raft_server_t* me_)
     {
         int e = me->cb.applylog(me_, me->udata, ety, me->last_applied_idx - 1);
         if (RAFT_ERR_SHUTDOWN == e)
-        {
-            printf("shutting down due to applylog\n");
             return RAFT_ERR_SHUTDOWN;
-        }
     }
 
     /* Membership Change: confirm connection with cluster */
@@ -1035,10 +976,7 @@ int raft_apply_all(raft_server_t* me_)
     {
         int e = raft_apply_entry(me_);
         if (RAFT_ERR_SHUTDOWN == e)
-        {
-            printf("shutting down due to applylog\n");
             return RAFT_ERR_SHUTDOWN;
-        }
     }
 
     return 0;
@@ -1067,8 +1005,6 @@ int raft_recv_entries(raft_server_t* me_,
     /* TODO: make recv_entries a recv_entry replacement */
     assert(etys->n_entries == 0);
 
-    __log(me_, node, "recv entries");
-
     if (!node)
         node = raft_get_node(me_, etys->node_id);
 
@@ -1083,9 +1019,6 @@ int raft_recv_entries(raft_server_t* me_,
     r->term = -1;
     r->id = -1;
 
-    __log(me_, node, "recvd ENTRIZ %d", etys->node_id);
-
-    /* printf("recvd entries %d %d\n", raft_get_nodeid(me_), r->success); */
     return 0;
 }
 

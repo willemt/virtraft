@@ -275,7 +275,6 @@ static int __raft_applylog(
                 {
                     server_t* sv = __get_server_from_nodeid(sys, raft_get_nodeid(raft));
                     sv->connected = NODE_CONNECTED;
-                    printf("ADD NODE: %d\n", raft_get_nodeid(raft));
                 }
             }
             break;
@@ -345,9 +344,6 @@ void __raft_log(raft_server_t* raft, raft_node_t* node, void *udata,
     /* system_t* sys = udata; */
 
     if (node)
-        /* printf("> %lx, %lx %s\n", */
-        /*        (unsigned long)raft, */
-        /*        (unsigned long)sys->servers[raft_node_get_id(node)].raft, */
         printf("> %0.10d, %0.10d %s\n",
                raft_get_nodeid(raft),
                raft_node_get_id(node),
@@ -415,29 +411,20 @@ static int __raft_logentry_pop(
             break;
 
         case RAFT_LOGTYPE_REMOVE_NODE:
-            {
-            int is_self = chg->node_id == raft_get_nodeid(raft);
-            if (is_self)
+            if (chg->node_id == raft_get_nodeid(raft))
                 sv->connected = NODE_CONNECTED;
-            }
             break;
 
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
-            {
-            int is_self = chg->node_id == raft_get_nodeid(raft);
-            if (is_self)
+            if (chg->node_id == raft_get_nodeid(raft))
                 sv->connected = NODE_DISCONNECTED;
-            }
             break;
 
         case RAFT_LOGTYPE_ADD_NODE:
-            {
-            int is_self = chg->node_id == raft_get_nodeid(raft);
-            if (is_self)
+            if (chg->node_id == raft_get_nodeid(raft))
             {
                 assert(sv->connected == NODE_CONNECTING);
                 sv->connected = NODE_CONNECTING;
-            }
             }
             break;
 
@@ -541,7 +528,6 @@ int __raft_send_entries(
     )
 {
     msg_entries_t* out = calloc(1, sizeof(msg_entries_t));
-    /* printf("sending entries %d\n", raft_get_nodeid(raft)); */
     memcpy(out, msg, sizeof(msg_entries_t));
     return __append_msg(udata, out, MSG_ENTRIES, sizeof(*out), raft_node_get_id(node), raft);
 }
@@ -560,8 +546,6 @@ static int __raft_node_has_sufficient_logs(
     if (!leader)
         return -1;
 
-    printf("SUFFXX %d\n", change->node_id);
-
     msg_entry_t entry = {
         // FIXME: Should be random
         .id = 1,
@@ -575,12 +559,8 @@ static int __raft_node_has_sufficient_logs(
     msg_entry_response_t r;
     int e = raft_recv_entry(leader->raft, &entry, &r);
     if (0 == e)
-    {
-        printf("SUFFICIENT: %0.10d\n", change->node_id);
         return 0;
-    }
 
-    printf("INSUFFICIENT: %d\n", change->node_id);
     return -1;
 }
 
@@ -611,7 +591,6 @@ static void __create_node(server_t* sv, int id, system_t* sys)
 
 static void __shutdown_server(server_t* sv)
 {
-    printf("shutting down: %0.10d\n", raft_get_nodeid(sv->raft));
     raft_clear(sv->raft);
     sv->connected = NODE_DISCONNECTED;
     while (llqueue_poll(sv->inbox));
@@ -656,7 +635,6 @@ static void __server_poll_messages(server_t* me, system_t* sys)
         case MSG_ENTRIES:
         {
             msg_entries_response_t response;
-            /* printf("ENTRIZ to %0.10d from %0.10d\n", raft_get_nodeid(me->raft), m->sender); */
             raft_recv_entries(me->raft, n, m->data, &response);
             __append_msg(sys,
                 &response,
@@ -669,7 +647,6 @@ static void __server_poll_messages(server_t* me, system_t* sys)
 
         case MSG_ENTRIES_RESPONSE:
         {
-            /* printf("ENTRIZRESP to %0.10d from %0.10d\n", raft_get_nodeid(me->raft), m->sender); */
             int e = raft_recv_entries_response(me->raft, n, m->data);
             if (RAFT_ERR_SHUTDOWN == e)
                 __shutdown_server(me);
@@ -810,8 +787,6 @@ static void __toggle_membership(server_t* node)
     if (leader == node)
         return;
 
-    printf("yyy %0.10d\n", node->node_id);
-
     if (NODE_DISCONNECTING == node->connected)
         return;
 
@@ -841,14 +816,10 @@ static void __toggle_membership(server_t* node)
 
     assert(raft_entry_is_cfg_change(&entry));
 
-    printf("xxx %0.10d\n", node->node_id);
-
     msg_entry_response_t r;
     int e = raft_recv_entry(leader->raft, &entry, &r);
     if (0 != e)
         return;
-
-    printf("zzz %0.10d\n", node->node_id);
 
     if (NODE_DISCONNECTED == node->connected)
     {
@@ -867,8 +838,8 @@ static void __toggle_membership(server_t* node)
 
 static void __periodic(system_t* sys)
 {
-    /* if (opts.debug) */
-        /* printf("\n"); */
+    if (opts.debug)
+        printf("\n");
 
     if (random() % 100 < sys->client_rate)
         __push_entry(sys);
@@ -894,48 +865,7 @@ static void __periodic(system_t* sys)
             else if (RAFT_ERR_SHUTDOWN == e)
                 __shutdown_server(sv);
             else
-            {
                 raft_apply_all(sv->raft);
-
-                int j, vpeers = 0;
-                for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
-                {
-                    raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
-                    vpeers += node && raft_node_is_voting(node) ? 1 : 0;
-                }
-
-                printf("node %0.10d peers (%d, %d) ci:%d t:%d",
-                    raft_get_nodeid(sv->raft),
-                    raft_get_num_nodes(sv->raft),
-                    vpeers,
-                    raft_get_current_idx(sv->raft),
-                    raft_get_current_term(sv->raft)
-                    );
-
-                printf("\t\t\t(");
-#if 0
-                for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
-                {
-                    raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
-                    if (node)
-                        printf("%0.10d ", raft_node_get_id(node));
-                }
-                printf(") ");
-                printf("\t(");
-#endif
-                for (j = 0; j < raft_get_num_nodes(sv->raft); j++)
-                {
-                    raft_node_t* node = raft_get_node_from_idx(sv->raft, j);
-                    if (node && raft_node_is_voting(node))
-                        printf("%0.10d ", raft_node_get_id(node));
-                }
-                printf(") ");
-
-                printf("%d ", sv->connected);
-                if (raft_is_leader(sv->raft))
-                    printf("LDR");
-                printf("\n");
-            }
         }
     }
 
@@ -1028,10 +958,7 @@ int main(int argc, char **argv)
     {
         int iters, max_iters = atoi(opts.iterations);
         for (iters = 0; iters < max_iters || max_iters == -1; iters++)
-        {
-            printf("%.5d\n\n", iters);
             __periodic(&sys);
-        }
     }
 
     if (opts.tsv)
