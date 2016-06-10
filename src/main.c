@@ -372,48 +372,6 @@ static int __raft_logentry_offer(
     if (server)
         server->total_offer_count += 1;
 
-    if (!raft_entry_is_cfg_change(ety))
-        return 0;
-
-    entry_cfg_change_t *chg = (void*)ety->data.buf;
-    raft_node_t* node = raft_get_node(r, chg->node_id);
-    int is_self = chg->node_id == raft_get_nodeid(r);
-
-    switch (ety->type)
-    {
-        case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
-            /* printf("ADD %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r)); */
-            if (!is_self)
-            {
-                raft_node_t* node = raft_add_non_voting_node(r, NULL, chg->node_id, is_self);
-                assert(node);
-            }
-            break;
-
-        case RAFT_LOGTYPE_ADD_NODE:
-            /* printf("ADDV voting %0.10d to %0.10d\n", chg->node_id, raft_get_nodeid(r)); */
-            node = raft_add_node(r, NULL, chg->node_id, is_self);
-            assert(node);
-            assert(raft_node_is_voting(node));
-            break;
-
-        case RAFT_LOGTYPE_DEMOTE_NODE:
-            raft_node_set_voting(node, 0);
-            break;
-
-        case RAFT_LOGTYPE_REMOVE_NODE:
-            printf("REM %0.10d from %0.10d\n", chg->node_id, raft_get_nodeid(r));
-            if (node)
-            {
-                printf("REM OK\n");
-                raft_remove_node(r, node);
-            }
-            break;
-
-        default:
-            assert(0);
-    }
-
     return 0;
 }
 
@@ -442,34 +400,23 @@ static int __raft_logentry_pop(
     )
 {
     entry_cfg_change_t *chg = (void*)ety->data.buf;
+    system_t* sys = udata;
+
+    sys->log_pops += 1;
 
     if (!raft_entry_is_cfg_change(ety))
         return 0;
 
-    printf("POPPING %0.10d type: %d from %0.10d\n",
-        chg->node_id, ety->type, raft_get_nodeid(raft));
-
-    system_t* sys = udata;
-
     server_t* sv = __get_server_from_nodeid(sys, chg->node_id);
-
-    sys->log_pops += 1;
 
     switch (ety->type)
     {
         case RAFT_LOGTYPE_DEMOTE_NODE:
-            {
-            /* int is_self = chg->node_id == raft_get_nodeid(raft); */
-            raft_node_t* node = raft_get_node(raft, chg->node_id);
-            raft_node_set_voting(node, 1);
-            }
             break;
 
         case RAFT_LOGTYPE_REMOVE_NODE:
             {
             int is_self = chg->node_id == raft_get_nodeid(raft);
-            raft_node_t* node = raft_add_non_voting_node(raft, NULL, chg->node_id, is_self);
-            assert(node);
             if (is_self)
                 sv->connected = NODE_CONNECTED;
             }
@@ -478,21 +425,14 @@ static int __raft_logentry_pop(
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             {
             int is_self = chg->node_id == raft_get_nodeid(raft);
-            raft_node_t* node = raft_get_node(raft, chg->node_id);
-            raft_remove_node(raft, node);
             if (is_self)
-            {
-                assert(0);
                 sv->connected = NODE_DISCONNECTED;
-            }
             }
             break;
 
         case RAFT_LOGTYPE_ADD_NODE:
             {
             int is_self = chg->node_id == raft_get_nodeid(raft);
-            raft_node_t* node = raft_get_node(raft, chg->node_id);
-            raft_node_set_voting(node, 0);
             if (is_self)
             {
                 assert(sv->connected == NODE_CONNECTING);
