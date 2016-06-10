@@ -37,8 +37,6 @@ typedef enum
     MSG_APPENDENTRIES_RESPONSE,
     /* the node wants to leave */
     MSG_LEAVE,
-    MSG_ENTRIES,
-    MSG_ENTRIES_RESPONSE,
 } peer_message_type_e;
 
 typedef struct
@@ -520,18 +518,6 @@ int __raft_send_appendentries(raft_server_t* raft,
     return __append_msg(udata, msg, MSG_APPENDENTRIES, sizeof(*msg), raft_node_get_id(node), raft);
 }
 
-int __raft_send_entries(
-    raft_server_t* raft,
-    void *udata,
-    raft_node_t* node,
-    msg_entries_t* msg
-    )
-{
-    msg_entries_t* out = calloc(1, sizeof(msg_entries_t));
-    memcpy(out, msg, sizeof(msg_entries_t));
-    return __append_msg(udata, out, MSG_ENTRIES, sizeof(*out), raft_node_get_id(node), raft);
-}
-
 /** Non-voting node now has enough logs to be able to vote.
  * Append a finalization cfg log entry. */
 static int __raft_node_has_sufficient_logs(
@@ -567,7 +553,6 @@ static int __raft_node_has_sufficient_logs(
 raft_cbs_t raft_funcs = {
     .send_requestvote            = __raft_send_requestvote,
     .send_appendentries          = __raft_send_appendentries,
-    .send_entries                = __raft_send_entries,
     .applylog                    = __raft_applylog,
     .persist_vote                = __raft_persist_vote,
     .persist_term                = __raft_persist_term,
@@ -630,27 +615,6 @@ static void __server_poll_messages(server_t* me, system_t* sys)
 
         case MSG_APPENDENTRIES_RESPONSE:
             raft_recv_appendentries_response(me->raft, n, m->data);
-            break;
-
-        case MSG_ENTRIES:
-        {
-            msg_entries_response_t response;
-            raft_recv_entries(me->raft, n, m->data, &response);
-            __append_msg(sys,
-                &response,
-                MSG_ENTRIES_RESPONSE,
-                sizeof(response),
-                m->sender,
-                me->raft);
-        }
-            break;
-
-        case MSG_ENTRIES_RESPONSE:
-        {
-            int e = raft_recv_entries_response(me->raft, n, m->data);
-            if (RAFT_ERR_SHUTDOWN == e)
-                __shutdown_server(me);
-        }
             break;
 
         case MSG_REQUESTVOTE:

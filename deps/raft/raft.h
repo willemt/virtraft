@@ -157,41 +157,6 @@ typedef struct
     int first_idx;
 } msg_appendentries_response_t;
 
-/** entries message. */
-typedef struct
-{
-    /** The node sending this */
-    int node_id;
-
-    /** number of entries within this message */
-    int n_entries;
-
-    /** array of entries within this message */
-    raft_entry_t* entries;
-} msg_entries_t;
-
-/** entries response message.
- * This message could force the receiver to shutdown */
-typedef struct
-{
-    /** the last entry's unique ID */
-    unsigned int id;
-
-    /** the entries' term */
-    int term;
-
-    /** the last entry's index */
-    int idx;
-
-    int success;
-
-    /** Our node ID */
-    int node_id;
-
-    /** Who we believe the leader to be */
-    int leader_id;
-} msg_entries_response_t;
-
 typedef void* raft_server_t;
 typedef void* raft_node_t;
 
@@ -223,30 +188,6 @@ typedef int (
     void *user_data,
     raft_node_t* node,
     msg_appendentries_t* msg
-    );
-
-/** Callback for sending entries messages.
- *
- * This could be used for routing entry logs to the leader, or for pinging
- * other nodes.
- *
- * This callback is optional if you do not need membership changes.
- *
- * This callback is required for membership changes as it is used as a ping to
- * determine if a node has been removed from the cluster or not.
- *
- * @param[in] raft The Raft server making this callback
- * @param[in] user_data User data that is passed from Raft server
- * @param[in] node The node's ID that we are sending this message to
- * @param[in] msg The message to be sent
- * @return 0 on success */
-typedef int (
-*func_send_entries_f
-)   (
-    raft_server_t* raft,
-    void *user_data,
-    raft_node_t* node,
-    msg_entries_t* msg
     );
 
 /** Callback for detecting when non-voting nodes have obtained enough logs.
@@ -331,9 +272,6 @@ typedef struct
 
     /** Callback for sending appendentries messages */
     func_send_appendentries_f send_appendentries;
-
-    /** Callback for sending ping messages */
-    func_send_entries_f send_entries;
 
     /** Callback for finite state machine application
      * Return 0 on success.
@@ -547,25 +485,6 @@ int raft_recv_requestvote_response(raft_server_t* me,
 int raft_recv_entry(raft_server_t* me,
                     msg_entry_t* ety,
                     msg_entry_response_t *r);
-
-/** Receive an entries message.
- *
- * @param[in] node The node who sent us this message
- * @param[in] p The entries message
- * @param[out] r The resulting response
- * @return 0 on success */
-int raft_recv_entries(raft_server_t* me,
-                   raft_node_t* node,
-                   msg_entries_t* p,
-                   msg_entries_response_t *r);
-
-/** Receive a response from an entries message we sent.
- * @param[in] node The node who sent us this message
- * @param[in] r The entries response message
- * @return 0 on success */
-int raft_recv_entries_response(raft_server_t* me,
-                            raft_node_t* node,
-                            msg_entries_response_t* r);
 
 /**
  * @return server's node ID; -1 if it doesn't know what it is */

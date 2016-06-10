@@ -190,37 +190,6 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
     }
     else if (me->election_timeout <= me->timeout_elapsed)
     {
-        /* When a membership configuration change log is popped, a node that was
-         * preparing to join the cluster will be stuck awaiting appendentries that
-         * never get sent. We use this timeout count to shutdown the node if this
-         * happens. */
-        me->num_election_timeouts++;
-
-        /* if (!me->connected && */
-
-        if (MAX_ELECTION_TIMEOUTS_FOR_NON_VOTING_NODE <= me->num_election_timeouts)
-        {
-            msg_entries_t etys;
-            etys.node_id = raft_get_nodeid(me_);
-            etys.n_entries = 0;
-
-            int i;
-            for (i = 0; i < me->num_nodes; i++)
-            {
-                if (me->node == me->nodes[i])
-                    continue;
-
-                __log(me_, me->nodes[i], "sending ENTRIZ");
-                if (me->cb.send_entries)
-                    me->cb.send_entries(me_, me->udata, me->nodes[i], &etys);
-            }
-            /* return RAFT_ERR_SHUTDOWN; */
-
-            /* if (0 == raft_get_num_voting_nodes(me_) &&  */
-            /*     1 == raft_get_num_nodes(me_)) */
-            /*     return RAFT_ERR_SHUTDOWN; */
-        }
-
         if (1 < raft_get_num_voting_nodes(me_) &&
             raft_node_is_voting(raft_get_my_node(me_)))
             raft_election_start(me_);
@@ -995,45 +964,6 @@ int raft_entry_is_cfg_change(raft_entry_t* ety)
         RAFT_LOGTYPE_ADD_NONVOTING_NODE == ety->type ||
         RAFT_LOGTYPE_DEMOTE_NODE == ety->type ||
         RAFT_LOGTYPE_REMOVE_NODE == ety->type);
-}
-
-int raft_recv_entries(raft_server_t* me_,
-                     raft_node_t* node,
-                     msg_entries_t* etys,
-                     msg_entries_response_t *r)
-{
-    /* TODO: make recv_entries a recv_entry replacement */
-    assert(etys->n_entries == 0);
-
-    if (!node)
-        node = raft_get_node(me_, etys->node_id);
-
-    if (!node)
-        r->success = RAFT_ERR_UNKNOWN_NODE;
-    else
-        r->success = 1;
-
-    r->node_id = raft_get_nodeid(me_);
-    r->leader_id = raft_get_current_leader(me_);
-    r->idx = -1;
-    r->term = -1;
-    r->id = -1;
-
-    return 0;
-}
-
-int raft_recv_entries_response(raft_server_t* me_,
-                              raft_node_t* node,
-                              msg_entries_response_t* r)
-{
-    raft_server_private_t* me = (raft_server_private_t*)me_;
-
-    if (RAFT_ERR_UNKNOWN_NODE == r->success && me->connected == NODE_DISCONNECTING)
-    {
-        /* __log(me_, node, "unknown shutdown %d", r->node_id); */
-        /* return RAFT_ERR_SHUTDOWN; */
-    }
-    return 0;
 }
 
 void raft_offer_log(raft_server_t* me_, raft_entry_t* ety, const int idx)
