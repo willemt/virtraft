@@ -35,8 +35,6 @@ typedef enum
     MSG_REQUESTVOTE_RESPONSE,
     MSG_APPENDENTRIES,
     MSG_APPENDENTRIES_RESPONSE,
-    /* the node wants to leave */
-    MSG_LEAVE,
 } peer_message_type_e;
 
 typedef struct
@@ -228,37 +226,15 @@ static int __raft_applylog(
         case RAFT_LOGTYPE_DEMOTE_NODE:
             {
                 entry_cfg_change_t *chg = (void*)ety->data.buf;
-                int is_self = chg->node_id == raft_get_nodeid(raft);
-                if (is_self)
+                if (chg->node_id == raft_get_nodeid(raft))
                     return RAFT_ERR_SHUTDOWN;
             }
             break;
         case RAFT_LOGTYPE_REMOVE_NODE:
             {
                 entry_cfg_change_t *chg = (void*)ety->data.buf;
-                int is_self = chg->node_id == raft_get_nodeid(raft);
-
-                printf("COMMIT: %d finished removing %0.10d from %0.10d\n",
-                        idx, chg->node_id, raft_get_nodeid(raft));
-
-                if (is_self)
+                if (chg->node_id == raft_get_nodeid(raft))
                     return RAFT_ERR_SHUTDOWN;
-
-                /* raft_node_t* to_remove = raft_get_node(raft, chg->node_id); */
-                /* if (to_remove) */
-                /*     raft_remove_node(raft, to_remove); */
-
-                /* #<{(| send leave message to our peers |)}># */
-                /* msg_entry_t* entries = calloc(1, sizeof(msg_entry_t) * msg->n_entries); */
-                /* memcpy(entries, msg->entries, sizeof(msg_entry_t) * msg->n_entries); */
-                /* msg->entries = entries; */
-                /*  */
-                /* #<{(| collect stats |)}># */
-                /* if (sys.max_entries_in_ae < msg->n_entries) */
-                /*     sys.max_entries_in_ae = msg->n_entries; */
-                /*  */
-                /* return __append_msg(udata, msg, MSG_APPENDENTRIES, sizeof(*msg), raft_node_get_id(node), raft); */
-                /*  */
             }
             break;
 
@@ -268,7 +244,6 @@ static int __raft_applylog(
         case RAFT_LOGTYPE_ADD_NODE:
             {
                 entry_cfg_change_t *chg = (void*)ety->data.buf;
-
                 if (chg->node_id == raft_get_nodeid(raft))
                 {
                     server_t* sv = __get_server_from_nodeid(sys, raft_get_nodeid(raft));
@@ -339,8 +314,6 @@ static int __raft_persist_vote(
 void __raft_log(raft_server_t* raft, raft_node_t* node, void *udata,
                 const char *buf)
 {
-    /* system_t* sys = udata; */
-
     if (node)
         printf("> %0.10d, %0.10d %s\n",
                raft_get_nodeid(raft),
@@ -597,7 +570,7 @@ static void __server_poll_messages(server_t* me, system_t* sys)
         switch (m->type)
         {
         case MSG_APPENDENTRIES:
-        {
+            {
             msg_appendentries_response_t response;
             int e = raft_recv_appendentries(me->raft, n, m->data, &response);
 
@@ -610,7 +583,7 @@ static void __server_poll_messages(server_t* me, system_t* sys)
                 sizeof(response),
                 m->sender,
                 me->raft);
-        }
+            }
             break;
 
         case MSG_APPENDENTRIES_RESPONSE:
@@ -618,7 +591,7 @@ static void __server_poll_messages(server_t* me, system_t* sys)
             break;
 
         case MSG_REQUESTVOTE:
-        {
+            {
             msg_requestvote_response_t response;
             raft_recv_requestvote(me->raft, n, m->data, &response);
             __append_msg(sys,
@@ -627,7 +600,7 @@ static void __server_poll_messages(server_t* me, system_t* sys)
                 sizeof(response),
                 m->sender,
                 me->raft);
-        }
+            }
             break;
 
         case MSG_REQUESTVOTE_RESPONSE:
@@ -637,14 +610,6 @@ static void __server_poll_messages(server_t* me, system_t* sys)
                 __shutdown_server(me);
             }
             break;
-
-        case MSG_LEAVE:
-            {
-            raft_node_t* to_remove = raft_get_node(me->raft, m->sender);
-            if (to_remove)
-                raft_remove_node(me->raft, to_remove);
-            }
-            break;
         }
     }
 }
@@ -652,8 +617,6 @@ static void __server_poll_messages(server_t* me, system_t* sys)
 static void __server_drop_messages(server_t* me, system_t* sys)
 {
     msg_t* m;
-
-    /* while ((m = llqueue_poll(me->inbox))) */
 
     /* Drop one message */
     if ((m = llqueue_poll(me->inbox)))
