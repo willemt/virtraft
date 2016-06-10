@@ -639,10 +639,8 @@ int raft_recv_entry(raft_server_t* me_,
     raft_append_entry(me_, &ety);
     for (i = 0; i < me->num_nodes; i++)
     {
-        if (me->node == me->nodes[i] ||
-            !me->nodes[i] ||
-            !raft_node_is_voting(me->nodes[i])
-            )
+        if (me->node == me->nodes[i] || !me->nodes[i] ||
+            !raft_node_is_voting(me->nodes[i]))
             continue;
 
         /* Only send new entries.
@@ -655,11 +653,7 @@ int raft_recv_entry(raft_server_t* me_,
 
     /* if we're the only node, we can consider the entry committed */
     if (1 == raft_get_num_voting_nodes(me_))
-    {
-        __log(me_, NULL, "increaxxxing commit idx to %d\n",
-            raft_get_current_idx(me_));
         raft_set_commit_idx(me_, raft_get_current_idx(me_));
-    }
 
     r->id = e->id;
     r->idx = raft_get_current_idx(me_);
@@ -714,8 +708,8 @@ int raft_apply_entry(raft_server_t* me_)
     if (!ety)
         return -1;
 
-    /* __log(me_, NULL, "applying log: %d, id: %d size: %d", */
-    /*       me->last_applied_idx, ety->id, ety->data.len); */
+    __log(me_, NULL, "applying log: %d, id: %d size: %d",
+          me->last_applied_idx, ety->id, ety->data.len);
 
     me->last_applied_idx++;
     if (me->cb.applylog)
@@ -729,10 +723,8 @@ int raft_apply_entry(raft_server_t* me_)
     if (RAFT_LOGTYPE_ADD_NODE == ety->type)
     {
         int node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, log_idx);
-        raft_node_t* node = raft_get_node(me_, node_id);
         // TODO: add test
-        raft_node_set_has_sufficient_logs(node);
-
+        raft_node_set_has_sufficient_logs(raft_get_node(me_, node_id));
         if (node_id == raft_get_nodeid(me_))
             me->connected = NODE_CONNECTED;
     }
@@ -798,7 +790,6 @@ void raft_send_appendentries_all(raft_server_t* me_)
     int i;
 
     me->timeout_elapsed = 0;
-
     for (i = 0; i < me->num_nodes; i++)
         if (me->node != me->nodes[i])
             raft_send_appendentries(me_, me->nodes[i]);
@@ -1032,5 +1023,4 @@ void raft_pop_log(raft_server_t* me_, raft_entry_t* ety, const int idx)
             assert(0);
             break;
     }
-
 }
