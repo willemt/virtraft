@@ -28,8 +28,6 @@
 #define max(a, b) ((a) < (b) ? (b) : (a))
 #endif
 
-#define MAX_ELECTION_TIMEOUTS_FOR_NON_VOTING_NODE 3
-
 static void __log(raft_server_t *me_, raft_node_t* node, const char *fmt, ...)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
@@ -127,7 +125,6 @@ void raft_become_leader(raft_server_t* me_)
     raft_set_state(me_, RAFT_STATE_LEADER);
     for (i = 0; i < me->num_nodes; i++)
     {
-        // FIXME: is_voting doesn't seem correct...
         if (me->node == me->nodes[i])
             continue;
 
@@ -240,7 +237,6 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     if (me->current_term < r->term)
     {
         raft_set_current_term(me_, r->term);
-        __log(me_, node, "term less %d < %d", me->current_term, r->term);
         raft_become_follower(me_);
         return 0;
     }
@@ -275,8 +271,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     raft_node_set_match_idx(node, r->current_idx);
 
     if (!raft_node_is_voting(node) &&
-        /* !raft_voting_change_is_in_progress(me_) && */
-        -1 == me->voting_cfg_change_log_idx &&
+        !raft_voting_change_is_in_progress(me_) &&
         raft_get_current_idx(me_) <= r->current_idx + 1 &&
         me->cb.node_has_sufficient_logs &&
         0 == raft_node_has_sufficient_logs(node)
@@ -307,11 +302,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     }
 
     if (raft_get_num_voting_nodes(me_) / 2 < votes && raft_get_commit_idx(me_) < point)
-    {
-        __log(me_, node, "increasing commit idx to %d %dvs%d\n",
-                point, raft_get_num_voting_nodes(me_) / 2, votes);
         raft_set_commit_idx(me_, point);
-    }
 
     /* Aggressively send remaining entries */
     if (raft_get_entry_from_idx(me_, raft_node_get_next_idx(node)))
@@ -346,14 +337,12 @@ int raft_recv_appendentries(
 
     if (raft_is_candidate(me_) && me->current_term == ae->term)
     {
-        __log(me_, node, "recv AE -> step down");
         raft_become_follower(me_);
     }
     else if (me->current_term < ae->term)
     {
         raft_set_current_term(me_, ae->term);
         r->term = ae->term;
-        __log(me_, node, "recv AE our term is less -> step down");
         raft_become_follower(me_);
     }
     else if (ae->term < me->current_term)
@@ -441,10 +430,6 @@ int raft_recv_appendentries(
     if (raft_get_commit_idx(me_) < ae->leader_commit)
     {
         int last_log_idx = max(raft_get_current_idx(me_), 1);
-
-        __log(me_, node, "increazzzzing commit idx to %d %d\n",
-            ae->leader_commit, last_log_idx);
-
         raft_set_commit_idx(me_, min(last_log_idx, ae->leader_commit));
     }
 
@@ -516,7 +501,6 @@ int raft_recv_requestvote(raft_server_t* me_,
     if (raft_get_current_term(me_) < vr->term)
     {
         raft_set_current_term(me_, vr->term);
-        __log(me_, node, "recv RV our term is less -> step down");
         raft_become_follower(me_);
     }
 
@@ -529,11 +513,10 @@ int raft_recv_requestvote(raft_server_t* me_,
         raft_vote_for_nodeid(me_, vr->candidate_id);
         r->vote_granted = 1;
 
-        /* we must be in an election. */
+        /* there must be in an election. */
         me->current_leader = NULL;
 
         me->timeout_elapsed = 0;
-        me->num_election_timeouts = 0;
     }
     else
     {
@@ -548,11 +531,7 @@ int raft_recv_requestvote(raft_server_t* me_,
             goto done;
         }
         else
-        {
             r->vote_granted = 0;
-            /* me->timeout_elapsed = 0; */
-            me->num_election_timeouts = 0;
-        }
     }
 
 done:
@@ -590,7 +569,6 @@ int raft_recv_requestvote_response(raft_server_t* me_,
     else if (raft_get_current_term(me_) < r->term)
     {
         raft_set_current_term(me_, r->term);
-        __log(me_, node, "recv RVR our term is less -> step down");
         raft_become_follower(me_);
         return 0;
     }
@@ -611,13 +589,7 @@ int raft_recv_requestvote_response(raft_server_t* me_,
 
     switch (r->vote_granted)
     {
-        case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
-            if (raft_node_is_voting(raft_get_my_node(me_)) &&
-                me->connected == NODE_DISCONNECTING)
-                return RAFT_ERR_SHUTDOWN;
-            break;
-
-        case 1:
+        case RAFT_REQUESTVOTE_ERR_GRANTED:
             if (node)
                 raft_node_vote_for_me(node, 1);
             int votes = raft_get_nvotes_for_me(me_);
@@ -626,6 +598,12 @@ int raft_recv_requestvote_response(raft_server_t* me_,
             break;
 
         case RAFT_REQUESTVOTE_ERR_NOT_GRANTED:
+            break;
+
+        case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
+            if (raft_node_is_voting(raft_get_my_node(me_)) &&
+                me->connected == NODE_DISCONNECTING)
+                return RAFT_ERR_SHUTDOWN;
             break;
 
         default:

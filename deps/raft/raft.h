@@ -13,12 +13,9 @@
 #define RAFT_ERR_NOT_LEADER                  -2
 #define RAFT_ERR_ONE_VOTING_CHANGE_ONLY      -3
 #define RAFT_ERR_SHUTDOWN                    -4
-#define RAFT_ERR_UNKNOWN_NODE                -5
 
 #define RAFT_REQUESTVOTE_ERR_GRANTED          1
 #define RAFT_REQUESTVOTE_ERR_NOT_GRANTED      0
-/**
- * vote granting failed because this node is pending removal */
 #define RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE    -1
 
 typedef enum {
@@ -306,7 +303,7 @@ typedef struct
 
     /** Callback for determining which node this configuration log entry
      * affects. This call only applies to configuration change log entries.
-     * @return the node ID of the affected node */
+     * @return the node ID of the node */
     func_logentry_event_f log_get_node_id;
 
     /** Callback for detecting when a non-voting node has sufficient logs. */
@@ -398,8 +395,7 @@ void raft_set_request_timeout(raft_server_t* me, int msec);
  * @return
  *  0 on success;
  *  -1 on failure;
- *  RAFT_ERR_SHUTDOWN when server should be shutdown
- */
+ *  RAFT_ERR_SHUTDOWN when server should be shutdown */
 int raft_periodic(raft_server_t* me, int msec_elapsed);
 
 /** Receive an appendentries message.
@@ -447,8 +443,7 @@ int raft_recv_requestvote(raft_server_t* me,
  * @param[in] r The requestvote response message
  * @return
  *  0 on success;
- *  RAFT_ERR_SHUTDOWN server should be shutdown;
- */
+ *  RAFT_ERR_SHUTDOWN server should be shutdown; */
 int raft_recv_requestvote_response(raft_server_t* me,
                                    raft_node_t* node,
                                    msg_requestvote_response_t* r);
