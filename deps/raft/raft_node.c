@@ -19,7 +19,6 @@
 #define RAFT_NODE_VOTED_FOR_ME 1
 #define RAFT_NODE_VOTING 1 << 1
 #define RAFT_NODE_HAS_SUFFICIENT_LOG 1 << 2
-#define RAFT_NODE_PENDING_REMOVAL 1 << 3
 
 typedef struct
 {
@@ -31,9 +30,6 @@ typedef struct
     int flags;
 
     int id;
-
-    /* number of failed request votes */
-    int num_failed_rvs;
 } raft_node_private_t;
 
 raft_node_t* raft_node_new(void* udata, int id)
@@ -117,21 +113,6 @@ int raft_node_is_voting(raft_node_t* me_)
     return (me->flags & RAFT_NODE_VOTING) != 0;
 }
 
-/* void raft_node_set_pending_removal(raft_node_t* me_, int pending_removal) */
-/* { */
-/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
-/*     if (pending_removal) */
-/*         me->flags |= RAFT_NODE_PENDING_REMOVAL; */
-/*     else */
-/*         me->flags &= ~RAFT_NODE_PENDING_REMOVAL; */
-/* } */
-/*  */
-/* int raft_node_is_pending_removal(raft_node_t* me_) */
-/* { */
-/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
-/*     return (me->flags & RAFT_NODE_PENDING_REMOVAL) != 0; */
-/* } */
-
 void raft_node_set_has_sufficient_logs(raft_node_t* me_)
 {
     raft_node_private_t* me = (raft_node_private_t*)me_;
@@ -149,21 +130,3 @@ int raft_node_get_id(raft_node_t* me_)
     raft_node_private_t* me = (raft_node_private_t*)me_;
     return me->id;
 }
-
-/* void raft_node_request_vote_failed(raft_node_t* me_) */
-/* { */
-/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
-/*     return me->num_failed_rvs += 1; */
-/* } */
-/*  */
-/* int raft_node_get_num_request_vote_failed(raft_node_t* me_) */
-/* { */
-/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
-/*     return me->num_failed_rvs; */
-/* } */
-/*  */
-/* void raft_node_clear_num_request_vote_failed(raft_node_t* me_) */
-/* { */
-/*     raft_node_private_t* me = (raft_node_private_t*)me_; */
-/*     me->num_failed_rvs = 0; */
-/* } */
