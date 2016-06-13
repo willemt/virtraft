@@ -363,7 +363,9 @@ void raft_set_callbacks(raft_server_t* me, raft_cbs_t* funcs, void* user_data);
  * @param[in] id The integer ID of this node
  *  This is used for identifying clients across sessions.
  * @param[in] is_self Set to 1 if this "node" is this server
- * @return node on success; otherwise NULL */
+ * @return
+ *  node if it was successfully added;
+ *  NULL if the node already exists */
 raft_node_t* raft_add_node(raft_server_t* me, void* user_data, int id, int is_self);
 
 #define raft_add_peer raft_add_node

@@ -145,8 +145,6 @@ void raft_become_candidate(raft_server_t* me_)
     raft_set_current_term(me_, raft_get_current_term(me_) + 1);
     for (i = 0; i < me->num_nodes; i++)
         raft_node_vote_for_me(me->nodes[i], 0);
-
-    /* TODO: Shouldn't vote for itself it if isn't a voting node */
     raft_vote(me_, me->node);
     me->current_leader = NULL;
     raft_set_state(me_, RAFT_STATE_CANDIDATE);
@@ -580,8 +578,7 @@ int raft_recv_requestvote_response(raft_server_t* me_,
         return 0;
     }
 
-    __log(me_, node, "node responded to requestvote: %d status: %s ct:%d rt:%d",
-          node,
+    __log(me_, node, "node responded to requestvote status:%s ct:%d rt:%d",
           r->vote_granted == 1 ? "granted" :
           r->vote_granted == 0 ? "not granted" : "unknown",
           me->current_term,
@@ -602,7 +599,7 @@ int raft_recv_requestvote_response(raft_server_t* me_,
 
         case RAFT_REQUESTVOTE_ERR_UNKNOWN_NODE:
             if (raft_node_is_voting(raft_get_my_node(me_)) &&
-                me->connected == NODE_DISCONNECTING)
+                me->connected == RAFT_NODE_STATUS_DISCONNECTING)
                 return RAFT_ERR_SHUTDOWN;
             break;
 
@@ -723,10 +720,9 @@ int raft_apply_entry(raft_server_t* me_)
     if (RAFT_LOGTYPE_ADD_NODE == ety->type)
     {
         int node_id = me->cb.log_get_node_id(me_, raft_get_udata(me_), ety, log_idx);
-        // TODO: add test
         raft_node_set_has_sufficient_logs(raft_get_node(me_, node_id));
         if (node_id == raft_get_nodeid(me_))
-            me->connected = NODE_CONNECTED;
+            me->connected = RAFT_NODE_STATUS_CONNECTED;
     }
 
     /* voting cfg change is now complete */
