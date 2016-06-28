@@ -848,25 +848,44 @@ int main(int argc, char **argv)
     raft_become_leader(sv->raft);
     sv->connected = NODE_CONNECTED;
 
-    /* add configuration change for leader's node */
-    entry_cfg_change_t *change = calloc(1, sizeof(*change));
-    change->node_id = 0;
-    msg_entry_t entry = {
-        // FIXME: Should be random
-        .id = 1,
-        .data.buf = (void*)change,
-        .data.len = sizeof(*change),
-        .type = RAFT_LOGTYPE_ADD_NODE,
-    };
-    msg_entry_response_t r;
-    e = raft_recv_entry(sv->raft, &entry, &r);
-    assert(RAFT_ERR_ONE_VOTING_CHANGE_ONLY != e);
-    assert(0 == e);
-    raft_set_commit_idx(sv->raft, 0 + 1);
-    raft_apply_all(sv->raft);
-
     sys.client_rate = atoi(opts.client_rate);
     sys.membership_rate = atoi(opts.member_rate);
+
+    /* if a 0 membership rate, it means this is a static configuration */
+    if (0 == sys.membership_rate)
+    {
+        for (i = 0; i < sys.n_servers; i++)
+        {
+            server_t* sv = &sys.servers[i];
+            sv->connected = NODE_CONNECTED;
+
+            int j;
+            for (j = 0; j < sys.n_servers; j++)
+            {
+                server_t* other = &sys.servers[j];
+                raft_add_node(sv->raft, other, j, i==j);
+            }
+        }
+    }
+    else
+    {
+        /* add configuration change for leader's node */
+        entry_cfg_change_t *change = calloc(1, sizeof(*change));
+        change->node_id = 0;
+        msg_entry_t entry = {
+            // FIXME: Should be random
+            .id = 1,
+            .data.buf = (void*)change,
+            .data.len = sizeof(*change),
+            .type = RAFT_LOGTYPE_ADD_NODE,
+        };
+        msg_entry_response_t r;
+        e = raft_recv_entry(sv->raft, &entry, &r);
+        assert(RAFT_ERR_ONE_VOTING_CHANGE_ONLY != e);
+        assert(0 == e);
+        raft_set_commit_idx(sv->raft, 0 + 1);
+        raft_apply_all(sv->raft);
+    }
 
     /* We're being fed commands via stdin.
      * This is the fuzzer's entry point */
