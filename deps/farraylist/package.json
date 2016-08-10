@@ -1,0 +1,9 @@
+{
+  "name": "farraylist",
+  "version": "0.0.1",
+  "repo": "willemt/farraylist",
+  "description": "An array list written that doesn't shift items once there is a 'hole' between slots",
+  "keywords": ["array", "list"],
+  "license": "BSD",
+  "src": ["fixed_arraylist.c", "fixed_arraylist.h"]
+}
