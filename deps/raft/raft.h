@@ -28,6 +28,11 @@ typedef enum {
 typedef enum {
     RAFT_LOGTYPE_NORMAL,
     RAFT_LOGTYPE_ADD_NONVOTING_NODE,
+    /**
+     * Membership change: Confirm membership
+     * This should be enqueued when the node has sufficient logs.
+     * Node will become a voting node.
+     */
     RAFT_LOGTYPE_ADD_NODE,
     RAFT_LOGTYPE_DEMOTE_NODE,
     RAFT_LOGTYPE_REMOVE_NODE,
@@ -544,10 +549,6 @@ int raft_get_request_timeout(raft_server_t* me);
 int raft_get_last_applied_idx(raft_server_t* me);
 
 /**
- * @return 1 if node is leader; 0 otherwise */
-int raft_node_is_leader(raft_node_t* node);
-
-/**
  * @return the node's next index */
 int raft_node_get_next_idx(raft_node_t* node);
 
@@ -601,10 +602,6 @@ raft_node_t* raft_get_current_leader_node(raft_server_t* me);
  * @return callback user data */
 void* raft_get_udata(raft_server_t* me);
 
-/**
- * @return this server's node ID */
-int raft_get_my_id(raft_server_t* me);
-
 /** Vote for a server.
  * This should be used to reload persistent state, ie. the voted-for field.
  * @param[in] node The server to vote for */
@@ -641,14 +638,6 @@ int raft_msg_entry_response_committed(raft_server_t* me_,
 /** Get node's ID.
  * @return ID of node */
 int raft_node_get_id(raft_node_t* me_);
-
-/** Tell if we are a leader, candidate or follower.
- * @return get state of type raft_state_e. */
-int raft_get_state(raft_server_t* me_);
-
-/** The the most recent log's term
- * @return the last log term */
-int raft_get_last_log_term(raft_server_t* me_);
 
 /** Tell if we are a leader, candidate or follower.
  * @return get state of type raft_state_e. */

@@ -44,12 +44,18 @@ struct path_parse
 
     action partition {
         int node_id1 = *(fpc) - '0';
+
+        assert(0 <= node_id1 && node_id1 < sys.n_servers);
+
         server_t* sv = &sys.servers[node_id1];
         sv->partitioned = !sv->partitioned;
     }
 
     action togglmem {
         int node_id1 = *(fpc) - '0';
+
+        assert(0 <= node_id1 && node_id1 < sys.n_servers);
+
         server_t* node = &sys.servers[node_id1];
 
         __toggle_membership(node);

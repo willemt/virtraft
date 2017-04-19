@@ -249,8 +249,6 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     {
         /* If AppendEntries fails because of log inconsistency:
            decrement nextIndex and retry (§5.3) */
-        assert(0 <= raft_node_get_next_idx(node));
-
         int next_idx = raft_node_get_next_idx(node);
         assert(0 <= next_idx);
         if (r->current_idx < next_idx - 1)
@@ -810,7 +808,7 @@ raft_node_t* raft_add_node(raft_server_t* me_, void* udata, int id, int is_self)
     }
 
     me->num_nodes++;
-    me->nodes = (raft_node_t*)realloc(me->nodes, sizeof(raft_node_t*) * me->num_nodes);
+    me->nodes = (raft_node_t*)realloc(me->nodes, sizeof(void*) * me->num_nodes);
     me->nodes[me->num_nodes - 1] = raft_node_new(udata, id);
     assert(me->nodes[me->num_nodes - 1]);
     if (is_self)
@@ -837,7 +835,7 @@ void raft_remove_node(raft_server_t* me_, raft_node_t* node)
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
     raft_node_t* new_array, *new_nodes;
-    new_array = (raft_node_t*)calloc((me->num_nodes - 1), sizeof(raft_node_t*));
+    new_array = (raft_node_t*)calloc((me->num_nodes - 1), sizeof(void*));
     new_nodes = new_array;
 
     int i, found = 0;

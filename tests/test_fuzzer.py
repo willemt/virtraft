@@ -69,5 +69,24 @@ class CoreTestCase(unittest.TestCase):
         assert p.returncode == 0
 
 
+class RegressionTestCase(unittest.TestCase):
+    def _run(self, data, servers=5, seed='3'):
+        args = [app_exe, '--servers', str(servers)]
+        if seed:
+            args.extend(['--seed', seed])
+        args.extend(['--no_random_period'])
+        args.extend(['--quiet'])
+        p = Popen(args, stdin=PIPE, stdout=PIPE)
+        p.communicate(input=''.join(data))
+        print(p.returncode)
+        assert p.returncode == 0
+
+    def test_no_seed(self):
+        self._run(['entry'], seed=None)
+
+    def test_toggle_membership(self):
+        self._run(['togglmem0', 'togglmem3'], servers=5)
+
+
 if __name__ == '__main__':
     unittest.main()

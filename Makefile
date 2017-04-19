@@ -8,6 +8,12 @@ letsbuildthis:
 clean:
 	python waf clean
 
+tests:
+	build/virtraft --servers 3 -i 15000 -d 20 --seed 1 -q
+	build/virtraft --servers 5 -i 15000 -d 20 -m 20 --seed 2 -q
+	python tests/test_fuzzer.py
+.PHONY : tests
+
 libh2o_build:
 	cd deps/h2o && cmake . -DCMAKE_INCLUDE_PATH=../libuv/include -DLIBUV_LIBRARIES=1
 	cd deps/h2o && make libh2o

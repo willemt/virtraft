@@ -17,7 +17,7 @@ struct path_parse
 };
 
 
-#line 72 "src/command_parser.rl"
+#line 78 "src/command_parser.rl"
 
 
 
@@ -92,7 +92,7 @@ static const int path_parse_error = 0;
 static const int path_parse_en_main = 29;
 
 
-#line 75 "src/command_parser.rl"
+#line 81 "src/command_parser.rl"
 
 static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result)
 {
@@ -105,7 +105,7 @@ static void __init(struct path_parse *fsm, system_t* sys, parse_result_t* result
 	 fsm->cs = path_parse_start;
 	}
 
-#line 82 "src/command_parser.rl"
+#line 88 "src/command_parser.rl"
 }
 
 static void __execute(struct path_parse *fsm, const char *data, size_t len)
@@ -220,14 +220,20 @@ _match:
 #line 45 "src/command_parser.rl"
 	{
         int node_id1 = *(p) - '0';
+
+        assert(0 <= node_id1 && node_id1 < sys.n_servers);
+
         server_t* sv = &sys.servers[node_id1];
         sv->partitioned = !sv->partitioned;
     }
 	break;
 	case 5:
-#line 51 "src/command_parser.rl"
+#line 54 "src/command_parser.rl"
 	{
         int node_id1 = *(p) - '0';
+
+        assert(0 <= node_id1 && node_id1 < sys.n_servers);
+
         server_t* node = &sys.servers[node_id1];
 
         __toggle_membership(node);
@@ -235,7 +241,7 @@ _match:
         __poll_messages(&sys);
     }
 	break;
-#line 239 "src/command_parser.c"
+#line 245 "src/command_parser.c"
 		}
 	}
 
@@ -248,7 +254,7 @@ _again:
 	_out: {}
 	}
 
-#line 90 "src/command_parser.rl"
+#line 96 "src/command_parser.rl"
 }
 
 static int __finish(struct path_parse *fsm)

@@ -22,6 +22,9 @@
 
 enum {
     NODE_DISCONNECTED,
+    /**
+     * When the node becomes a voting node, it is fully connected
+     */
     NODE_CONNECTED,
     NODE_CONNECTING,
     NODE_DISCONNECTING
@@ -60,7 +63,7 @@ typedef struct
     /* whether or not this node can communicate with other servers */
     int partitioned;
 
-    int connected;
+    int connect_status;
 
     int total_offer_count;
 } server_t;
@@ -131,7 +134,7 @@ static void __print_tsv()
         printf("%d\t", raft_get_log_count(r));
         printf("%d\t", raft_get_num_nodes(r));
         printf("%d\t", sv->total_offer_count);
-        printf("%d\t", sv->connected);
+        printf("%d\t", sv->connect_status);
         printf("\n");
     }
 }
@@ -156,7 +159,7 @@ static void __print_stats()
         printf("commit_idx %d\n", raft_get_commit_idx(r));
         printf("last_applied_idx %d\n", raft_get_last_applied_idx(r));
         printf("log_count %d\n", raft_get_log_count(r));
-        printf("connected %d\n", sv->connected);
+        printf("connected %d\n", sv->connect_status);
         printf("\n");
     }
 }
@@ -181,7 +184,7 @@ static server_t* __get_leader(system_t* sys)
     int i;
     /* for (i=0; i<sys->n_servers; i++) */
     for (i=sys->n_servers-1; 0<=i; i--)
-        if (sys->servers[i].connected == NODE_CONNECTED)
+        if (sys->servers[i].connect_status == NODE_CONNECTED)
             if (raft_is_leader(sys->servers[i].raft))
                 return &sys->servers[i];
     return NULL;
@@ -244,10 +247,11 @@ static int __raft_applylog(
         case RAFT_LOGTYPE_ADD_NODE:
             {
                 entry_cfg_change_t *chg = (void*)ety->data.buf;
+
                 if (chg->node_id == raft_get_nodeid(raft))
                 {
                     server_t* sv = __get_server_from_nodeid(sys, raft_get_nodeid(raft));
-                    sv->connected = NODE_CONNECTED;
+                    sv->connect_status = NODE_CONNECTED;
                 }
             }
             break;
@@ -383,19 +387,19 @@ static int __raft_logentry_pop(
 
         case RAFT_LOGTYPE_REMOVE_NODE:
             if (chg->node_id == raft_get_nodeid(raft))
-                sv->connected = NODE_CONNECTED;
+                sv->connect_status = NODE_CONNECTED;
             break;
 
         case RAFT_LOGTYPE_ADD_NONVOTING_NODE:
             if (chg->node_id == raft_get_nodeid(raft))
-                sv->connected = NODE_DISCONNECTED;
+                sv->connect_status = NODE_DISCONNECTED;
             break;
 
         case RAFT_LOGTYPE_ADD_NODE:
             if (chg->node_id == raft_get_nodeid(raft))
             {
-                assert(sv->connected == NODE_CONNECTING);
-                sv->connected = NODE_CONNECTING;
+                /* assert(sv->connect_status == NODE_CONNECTING); */
+                sv->connect_status = NODE_CONNECTING;
             }
             break;
 
@@ -452,6 +456,7 @@ static int __append_msg(
         m->sender = raft_get_nodeid(raft);
         m->data = malloc(len);
         memcpy(m->data, data, len);
+        assert(sv->inbox);
         llqueue_offer(sv->inbox, m);
     }
     while (random() % 100 < atoi(opts.dupe_rate));
@@ -537,20 +542,38 @@ raft_cbs_t raft_funcs = {
     .log                         = __raft_log,
 };
 
+/**
+ * Become a new node
+ */
+static void __recycle_node(server_t* node)
+{
+    assert(NODE_DISCONNECTED == node->connect_status);
+
+    /* New servers SHOULD create a new node id for themselves */
+    node->node_id = random();
+
+    /* make sure inbox is empty */
+    assert(node->inbox);
+    while (llqueue_poll(node->inbox));
+}
+
 static void __create_node(server_t* sv, int id, system_t* sys)
 {
     sv->raft = raft_new();
     raft_set_callbacks(sv->raft, &raft_funcs, sys);
     raft_set_election_timeout(sv->raft, 500);
     sv->inbox = llqueue_new();
-    sv->connected = NODE_DISCONNECTED;
+    sv->connect_status = NODE_DISCONNECTED;
     sv->node_id = id;
 }
 
 static void __shutdown_server(server_t* sv)
 {
     raft_clear(sv->raft);
-    sv->connected = NODE_DISCONNECTED;
+    sv->connect_status = NODE_DISCONNECTED;
+
+    /* empty inbox */
+    assert(sv->inbox);
     while (llqueue_poll(sv->inbox));
     assert(llqueue_count(sv->inbox) == 0);
 }
@@ -562,8 +585,9 @@ static void __server_poll_messages(server_t* me, system_t* sys)
     /* if (random() < 0.5) */
     /*     return; */
 
-    assert(me->connected != NODE_DISCONNECTED);
+    assert(me->connect_status != NODE_DISCONNECTED);
 
+    assert(me->inbox);
     while ((m = llqueue_poll(me->inbox)))
     {
         raft_node_t* n = raft_get_node(me->raft, m->sender);
@@ -619,6 +643,7 @@ static void __server_drop_messages(server_t* me, system_t* sys)
     msg_t* m;
 
     /* Drop one message */
+    assert(me->inbox);
     if ((m = llqueue_poll(me->inbox)))
         free(m);
 }
@@ -689,7 +714,7 @@ static int __voting_servers(system_t* sys)
     {
         raft_node_t* node = raft_get_my_node(sys->servers[i].raft);
         if (node && raft_node_is_voting(node))
-        /* if (sys->servers[i].connected == NODE_CONNECTED) */
+        /* if (sys->servers[i].connect_status == NODE_CONNECTED) */
             servers += 1;
     }
     return servers;
@@ -699,10 +724,14 @@ static void __poll_messages(system_t* sys)
 {
     int i;
     for (i=0; i<sys->n_servers; i++)
-        if (sys->servers[i].connected != NODE_DISCONNECTED)
+        if (sys->servers[i].connect_status != NODE_DISCONNECTED)
             __server_poll_messages(&sys->servers[i], sys);
 }
 
+/**
+ * Remove or add this node to the cluster
+ * Automatically create membership change entry. Give the entry to the leader.
+ */
 static void __toggle_membership(server_t* node)
 {
     server_t* leader = __get_leader(&sys);
@@ -714,20 +743,16 @@ static void __toggle_membership(server_t* node)
     if (leader == node)
         return;
 
-    if (NODE_DISCONNECTING == node->connected)
+    if (NODE_DISCONNECTING == node->connect_status)
         return;
 
-    if (NODE_CONNECTING == node->connected)
+    if (NODE_CONNECTING == node->connect_status)
         return;
 
-    if (NODE_DISCONNECTED == node->connected)
-    {
-        /* New servers SHOULD create a new node id for themselves */
-        node->node_id = random();
+    if (NODE_DISCONNECTED == node->connect_status)
+        __recycle_node(node);
 
-        /* make sure inbox is empty */
-        while (llqueue_poll(node->inbox));
-    }
+    /* Create a new configuration entry to be processed by the leader */
 
     change->node_id = node->node_id;
 
@@ -736,7 +761,7 @@ static void __toggle_membership(server_t* node)
         .id = 1,
         .data.buf = (void*)change,
         .data.len = sizeof(*change),
-        .type = node->connected == NODE_CONNECTED ?
+        .type = node->connect_status == NODE_CONNECTED ?
             RAFT_LOGTYPE_DEMOTE_NODE :
             RAFT_LOGTYPE_ADD_NONVOTING_NODE
     };
@@ -748,18 +773,19 @@ static void __toggle_membership(server_t* node)
     if (0 != e)
         return;
 
-    if (NODE_DISCONNECTED == node->connected)
+    if (NODE_DISCONNECTED == node->connect_status)
     {
+        node->connect_status = NODE_CONNECTING;
 
-        node->connected = NODE_CONNECTING;
         raft_node_t* added_node = raft_add_non_voting_node(node->raft, NULL, node->node_id, 1);
 
+        assert(node->inbox);
         assert(llqueue_count(node->inbox) == 0);
         assert(added_node);
     }
-    else if (NODE_CONNECTED == node->connected)
+    else if (NODE_CONNECTED == node->connect_status)
     {
-        /* node->connected = NODE_DISCONNECTING; */
+        node->connect_status = NODE_DISCONNECTING;
     }
 }
 
@@ -781,7 +807,7 @@ static void __periodic(system_t* sys)
         if (random() % 100 < sys->membership_rate)
             __toggle_membership(sv);
 
-        if (!opts.no_random_period && sv->connected != NODE_DISCONNECTED)
+        if (!opts.no_random_period && sv->connect_status != NODE_DISCONNECTED)
         {
             int e = raft_periodic(sv->raft, random() % 100);
             if (-1 == e)
@@ -846,7 +872,7 @@ int main(int argc, char **argv)
     server_t* sv = &sys.servers[0];
     raft_add_non_voting_node(sv->raft, NULL, 0, 1);
     raft_become_leader(sv->raft);
-    sv->connected = NODE_CONNECTED;
+    sv->connect_status = NODE_CONNECTED;
 
     sys.client_rate = atoi(opts.client_rate);
     sys.membership_rate = atoi(opts.member_rate);
@@ -857,7 +883,7 @@ int main(int argc, char **argv)
         for (i = 0; i < sys.n_servers; i++)
         {
             server_t* sv = &sys.servers[i];
-            sv->connected = NODE_CONNECTED;
+            sv->connect_status = NODE_CONNECTED;
 
             int j;
             for (j = 0; j < sys.n_servers; j++)
