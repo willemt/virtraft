@@ -78,7 +78,6 @@ class RegressionTestCase(unittest.TestCase):
         args.extend(['--quiet'])
         p = Popen(args, stdin=PIPE, stdout=PIPE)
         p.communicate(input=''.join(data))
-        print(p.returncode)
         assert p.returncode == 0
 
     def test_no_seed(self):
