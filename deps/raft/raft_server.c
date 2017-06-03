@@ -279,26 +279,27 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     }
 
     /* Update commit idx */
-    int votes = 1; /* include me */
     int point = r->current_idx;
-    int i;
-    for (i = 0; i < me->num_nodes; i++)
+    if (point)
     {
-        if (me->node == me->nodes[i] || !raft_node_is_voting(me->nodes[i]))
-            continue;
-
-        int match_idx = raft_node_get_match_idx(me->nodes[i]);
-
-        if (0 < match_idx)
+        raft_entry_t* ety = raft_get_entry_from_idx(me_, point);
+        if (raft_get_commit_idx(me_) < point && ety->term == me->current_term)
         {
-            raft_entry_t* ety = raft_get_entry_from_idx(me_, match_idx);
-            if (ety->term == me->current_term && point <= match_idx)
-                votes++;
+            int i, votes = 1;
+            for (i = 0; i < me->num_nodes; i++)
+            {
+                if (me->node != me->nodes[i] &&
+                    raft_node_is_voting(me->nodes[i]) &&
+                    point <= raft_node_get_match_idx(me->nodes[i]))
+                {
+                    votes++;
+                }
+            }
+
+            if (raft_get_num_voting_nodes(me_) / 2 < votes)
+                raft_set_commit_idx(me_, point);
         }
     }
-
-    if (raft_get_num_voting_nodes(me_) / 2 < votes && raft_get_commit_idx(me_) < point)
-        raft_set_commit_idx(me_, point);
 
     /* Aggressively send remaining entries */
     if (raft_get_entry_from_idx(me_, raft_node_get_next_idx(node)))
@@ -674,8 +675,8 @@ int raft_send_requestvote(raft_server_t* me_, raft_node_t* node)
     rv.last_log_idx = raft_get_current_idx(me_);
     rv.last_log_term = raft_get_last_log_term(me_);
     rv.candidate_id = raft_get_nodeid(me_);
-    if (me->cb.send_requestvote)
-        me->cb.send_requestvote(me_, me->udata, node, &rv);
+    assert(me->cb.send_requestvote);
+    me->cb.send_requestvote(me_, me->udata, node, &rv);
     return 0;
 }
 
@@ -707,12 +708,10 @@ int raft_apply_entry(raft_server_t* me_)
           me->last_applied_idx, ety->id, ety->data.len);
 
     me->last_applied_idx++;
-    if (me->cb.applylog)
-    {
-        int e = me->cb.applylog(me_, me->udata, ety, me->last_applied_idx - 1);
-        if (RAFT_ERR_SHUTDOWN == e)
-            return RAFT_ERR_SHUTDOWN;
-    }
+    assert(me->cb.applylog);
+    int e = me->cb.applylog(me_, me->udata, ety, me->last_applied_idx - 1);
+    if (RAFT_ERR_SHUTDOWN == e)
+        return RAFT_ERR_SHUTDOWN;
 
     /* Membership Change: confirm connection with cluster */
     if (RAFT_LOGTYPE_ADD_NODE == ety->type)
@@ -743,9 +742,6 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
     assert(node);
     assert(node != me->node);
 
-    if (!(me->cb.send_appendentries))
-        return -1;
-
     msg_appendentries_t ae = {};
     ae.term = me->current_term;
     ae.leader_commit = raft_get_commit_idx(me_);
@@ -773,6 +769,7 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
           ae.prev_log_idx,
           ae.prev_log_term);
 
+    assert(me->cb.send_appendentries);
     me->cb.send_appendentries(me_, me->udata, node, &ae);
 
     return 0;
@@ -885,8 +882,8 @@ void raft_vote_for_nodeid(raft_server_t* me_, const int nodeid)
     raft_server_private_t* me = (raft_server_private_t*)me_;
 
     me->voted_for = nodeid;
-    if (me->cb.persist_vote)
-        me->cb.persist_vote(me_, me->udata, nodeid);
+    assert(me->cb.persist_vote);
+    me->cb.persist_vote(me_, me->udata, nodeid);
 }
 
 int raft_msg_entry_response_committed(raft_server_t* me_,

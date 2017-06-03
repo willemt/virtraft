@@ -28,11 +28,6 @@ typedef enum {
 typedef enum {
     RAFT_LOGTYPE_NORMAL,
     RAFT_LOGTYPE_ADD_NONVOTING_NODE,
-    /**
-     * Membership change: Confirm membership
-     * This should be enqueued when the node has sufficient logs.
-     * Node will become a voting node.
-     */
     RAFT_LOGTYPE_ADD_NODE,
     RAFT_LOGTYPE_DEMOTE_NODE,
     RAFT_LOGTYPE_REMOVE_NODE,
@@ -350,9 +345,6 @@ void raft_clear(raft_server_t* me);
 void raft_set_callbacks(raft_server_t* me, raft_cbs_t* funcs, void* user_data);
 
 /** Add node.
- *
- * @note This library does not yet support membership changes.
- *  Once raft_periodic has been run this will fail.
  *
  * If a voting node already exists the call will fail.
  *
