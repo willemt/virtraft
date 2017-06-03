@@ -60,6 +60,7 @@ def build(bld):
         source="""
         src/main.c
         src/fsm_simple.c
+        src/fsm_kvstore.c
         """.split() + bld.clib_c_files(clibs),
         includes=['./include'] + includes + bld.clib_h_paths(clibs),
         target='virtraft',

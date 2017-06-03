@@ -281,7 +281,7 @@ static int __raft_applylog(
         default:
             {
             server_t* sv = __get_server_from_nodeid(sys, raft_get_nodeid(raft));
-            fsm_simple_push(sv->fsm, ety->data.buf);
+            fsm_kvstore_push(sv->fsm, ety->data.buf);
             }
             break;
     }
@@ -588,7 +588,7 @@ static void __recycle_node(server_t* node)
 static void __create_node(server_t* sv, int id, system_t* sys)
 {
     sv->raft = raft_new();
-    sv->fsm = fsm_simple_new(FSM_SIZE);
+    sv->fsm = fsm_kvstore_new(FSM_SIZE);
     raft_set_callbacks(sv->raft, &raft_funcs, sys);
     raft_set_election_timeout(sv->raft, 500);
     sv->inbox = llqueue_new();
@@ -720,9 +720,9 @@ static void __push_entry(system_t* sys)
 {
     int i;
 
-    fsm_simple_cmd_t cmd;
-    fsm_simple_rand_cmd(sys->fsm, &cmd);
-    fsm_simple_push(sys->fsm, &cmd);
+    fsm_kvstore_cmd_t cmd;
+    fsm_kvstore_rand_cmd(sys->fsm, &cmd);
+    fsm_kvstore_push(sys->fsm, &cmd);
 
     for (i = 0; i < sys->n_servers; i++)
     {
@@ -732,9 +732,9 @@ static void __push_entry(system_t* sys)
 
         raft_entry_t* ety = calloc(1, sizeof(raft_entry_t));
         ety->id = sys->n_entries++;
-        ety->data.buf = malloc(sizeof(fsm_simple_cmd_t));
-        memcpy(ety->data.buf, &cmd, sizeof(fsm_simple_cmd_t));
-        ety->data.len = sizeof(fsm_simple_cmd_t);
+        ety->data.buf = malloc(sizeof(fsm_kvstore_cmd_t));
+        memcpy(ety->data.buf, &cmd, sizeof(fsm_kvstore_cmd_t));
+        ety->data.len = sizeof(fsm_kvstore_cmd_t);
         msg_entry_response_t response;
         raft_recv_entry(r, ety, &response);
     }
@@ -900,7 +900,7 @@ int main(int argc, char **argv)
     srand(atoi(opts.seed));
 
     sys.commits = farraylist_new();
-    sys.fsm = fsm_simple_new(FSM_SIZE);
+    sys.fsm = fsm_kvstore_new(FSM_SIZE);
 
     sys.n_servers = atoi(opts.servers);
     sys.servers = calloc(sys.n_servers, sizeof(*sys.servers));
