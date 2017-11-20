@@ -73,7 +73,7 @@ typedef struct
 
     int total_offer_count;
 
-    fsm_t* fsm;
+    fsm_kvstore_t* fsm;
 } server_t;
 
 typedef struct {
@@ -106,7 +106,7 @@ typedef struct
     farraylist_t* commits;
 
     /* the master finite state machine */
-    fsm_t* fsm;
+    fsm_kvstore_t* fsm;
 } system_t;
 
 system_t sys;
