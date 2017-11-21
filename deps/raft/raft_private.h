@@ -49,9 +49,10 @@ typedef struct {
     int num_nodes;
 
     int election_timeout;
+    int election_timeout_rand;
     int request_timeout;
 
-    /* what this node thinks is the node ID of the current leader, or -1 if
+    /* what this node thinks is the node ID of the current leader, or NULL if
      * there isn't a known current leader. */
     raft_node_t* current_leader;
 
@@ -70,15 +71,11 @@ typedef struct {
     int connected;
 } raft_server_private_t;
 
-void raft_election_start(raft_server_t* me);
+int raft_election_start(raft_server_t* me);
 
-void raft_become_candidate(raft_server_t* me);
+int raft_become_candidate(raft_server_t* me);
 
-void raft_become_follower(raft_server_t* me);
-
-void raft_vote(raft_server_t* me, raft_node_t* node);
-
-void raft_set_current_term(raft_server_t* me,int term);
+void raft_randomize_election_timeout(raft_server_t* me_);
 
 /**
  * @return 0 on error */
@@ -86,7 +83,7 @@ int raft_send_requestvote(raft_server_t* me, raft_node_t* node);
 
 int raft_send_appendentries(raft_server_t* me, raft_node_t* node);
 
-void raft_send_appendentries_all(raft_server_t* me_);
+int raft_send_appendentries_all(raft_server_t* me_);
 
 /**
  * Apply entry at lastApplied + 1. Entry becomes 'committed'.
@@ -106,6 +103,8 @@ void raft_set_state(raft_server_t* me_, int state);
 int raft_get_state(raft_server_t* me_);
 
 raft_node_t* raft_node_new(void* udata, int id);
+
+void raft_node_free(raft_node_t* me_);
 
 void raft_node_set_next_idx(raft_node_t* node, int nextIdx);
 

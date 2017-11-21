@@ -322,7 +322,8 @@ static int __raft_applylog(
 static int __raft_persist_term(
     raft_server_t* raft,
     void *udata,
-    const int current_term
+    const int current_term,
+    const int vote
     )
 {
     return 0;
