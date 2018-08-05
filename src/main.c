@@ -900,7 +900,7 @@ int main(int argc, char **argv)
 
     srand(atoi(opts.seed));
 
-    sys.commits = farraylist_new();
+    sys.commits = farraylist_new(1000);
     sys.fsm = fsm_kvstore_new(FSM_SIZE);
 
     sys.n_servers = atoi(opts.servers);
