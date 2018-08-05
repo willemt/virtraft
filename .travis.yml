@@ -7,3 +7,4 @@ before_install:
   - pip install --user hypothesis
 script:
   - make
+  - make tests
