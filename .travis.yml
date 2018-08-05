@@ -3,5 +3,7 @@ addons:
   apt:
     packages:
       - python-simplejson
+before_install:
+  - pip install --user hypothesis
 script:
   - make
