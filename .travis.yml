@@ -1,3 +1,7 @@
 language: c
+addons:
+  apt:
+    packages:
+      - python-simplejson
 script:
   - make
